@@ -1,5 +1,7 @@
 """Tests for EnvironmentProvider ABC."""
 
+import pytest
+
 from openjarvis.evals.core.environment import EnvironmentProvider
 
 
@@ -20,11 +22,13 @@ class _MockEnv(EnvironmentProvider):
 
 
 class TestEnvironmentProvider:
+    @pytest.mark.spec("REQ-evals.environments")
     def test_concrete_implementation(self) -> None:
         env = _MockEnv()
         info = env.setup()
         assert info["url"] == "http://localhost:8080"
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_validate_returns_tuple(self) -> None:
         from openjarvis.evals.core.types import EvalRecord
 
@@ -34,6 +38,7 @@ class TestEnvironmentProvider:
         assert is_correct is True
         assert meta["status"] == "ok"
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_lifecycle(self) -> None:
         env = _MockEnv()
         env.setup()

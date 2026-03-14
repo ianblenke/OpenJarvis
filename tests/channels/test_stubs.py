@@ -14,12 +14,14 @@ from openjarvis.channels._stubs import (
 
 
 class TestChannelStatus:
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_channel_status_values(self) -> None:
         assert ChannelStatus.CONNECTED == "connected"
         assert ChannelStatus.DISCONNECTED == "disconnected"
         assert ChannelStatus.CONNECTING == "connecting"
         assert ChannelStatus.ERROR == "error"
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_channel_status_is_str(self) -> None:
         assert isinstance(ChannelStatus.CONNECTED, str)
 
@@ -29,6 +31,7 @@ class TestChannelStatus:
 
 
 class TestChannelMessage:
+    @pytest.mark.spec("REQ-channels.message")
     def test_channel_message_creation(self) -> None:
         msg = ChannelMessage(
             channel="slack",
@@ -45,12 +48,14 @@ class TestChannelMessage:
         assert msg.conversation_id == "conv-001"
         assert msg.metadata == {"thread_ts": "12345.6789"}
 
+    @pytest.mark.spec("REQ-channels.message")
     def test_channel_message_defaults(self) -> None:
         msg = ChannelMessage(channel="discord", sender="bot", content="Hi")
         assert msg.message_id == ""
         assert msg.conversation_id == ""
         assert msg.metadata == {}
 
+    @pytest.mark.spec("REQ-channels.message")
     def test_channel_message_metadata_isolation(self) -> None:
         msg1 = ChannelMessage(channel="a", sender="b", content="c")
         msg2 = ChannelMessage(channel="a", sender="b", content="c")
@@ -59,10 +64,12 @@ class TestChannelMessage:
 
 
 class TestBaseChannel:
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_base_channel_is_abstract(self) -> None:
         with pytest.raises(TypeError):
             BaseChannel()  # type: ignore[abstract]
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_channel_handler_type(self) -> None:
         """ChannelHandler should accept ChannelMessage and return Optional[str]."""
 
@@ -74,6 +81,7 @@ class TestBaseChannel:
         result = my_handler(msg)
         assert result == "Received: hello"
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_channel_handler_none_return(self) -> None:
         def my_handler(msg: ChannelMessage) -> Optional[str]:
             return None
@@ -82,6 +90,7 @@ class TestBaseChannel:
         result = my_handler(msg)
         assert result is None
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_concrete_subclass(self) -> None:
         """A concrete subclass implementing all methods should be instantiable."""
 

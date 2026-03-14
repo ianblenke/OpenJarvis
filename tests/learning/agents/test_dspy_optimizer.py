@@ -1,12 +1,25 @@
-"""Tests for the DSPy agent optimizer (mocked -- no dspy dependency required)."""
+"""Tests for the DSPy agent optimizer (no dspy dependency required)."""
 
 from __future__ import annotations
 
 import time
-from unittest.mock import MagicMock, patch
+from typing import Any, List
+
+import pytest
+
+
+class _FakeTraceStore:
+    """Typed fake for trace store used by optimizers."""
+
+    def __init__(self, traces: List[Any] = None) -> None:
+        self._traces = traces or []
+
+    def list_traces(self, **kwargs) -> List[Any]:
+        return self._traces
 
 
 class TestDSPyOptimizerConfig:
+    @pytest.mark.spec("REQ-learning.dspy-optimizer")
     def test_default_config(self) -> None:
         from openjarvis.core.config import DSPyOptimizerConfig
 
@@ -15,6 +28,7 @@ class TestDSPyOptimizerConfig:
         assert cfg.max_bootstrapped_demos == 4
         assert cfg.min_traces == 20
 
+    @pytest.mark.spec("REQ-learning.dspy-optimizer")
     def test_optimizer_init(self) -> None:
         from openjarvis.core.config import DSPyOptimizerConfig
         from openjarvis.learning.agents.dspy_optimizer import DSPyAgentOptimizer
@@ -25,18 +39,20 @@ class TestDSPyOptimizerConfig:
 
 
 class TestDSPyOptimizerTraceConversion:
+    @pytest.mark.spec("REQ-learning.dspy-optimizer")
     def test_too_few_traces_skipped(self) -> None:
         from openjarvis.core.config import DSPyOptimizerConfig
         from openjarvis.learning.agents.dspy_optimizer import DSPyAgentOptimizer
 
         optimizer = DSPyAgentOptimizer(DSPyOptimizerConfig(min_traces=10))
-        mock_store = MagicMock()
-        mock_store.list_traces.return_value = []
+        store = _FakeTraceStore(traces=[])
 
-        result = optimizer.optimize(mock_store)
+        result = optimizer.optimize(store)
         assert result["status"] == "skipped"
 
-    def test_optimize_returns_toml_updates(self) -> None:
+    @pytest.mark.spec("REQ-learning.dspy-optimizer")
+    def test_optimize_returns_toml_updates(self, monkeypatch) -> None:
+        import openjarvis.learning.agents.dspy_optimizer as mod
         from openjarvis.core.config import DSPyOptimizerConfig
         from openjarvis.core.types import StepType, Trace, TraceStep
         from openjarvis.learning.agents.dspy_optimizer import DSPyAgentOptimizer
@@ -44,7 +60,6 @@ class TestDSPyOptimizerTraceConversion:
         cfg = DSPyOptimizerConfig(min_traces=1)
         optimizer = DSPyAgentOptimizer(cfg)
 
-        # Create mock traces
         now = time.time()
         traces = []
         for i in range(5):
@@ -66,17 +81,14 @@ class TestDSPyOptimizerTraceConversion:
                 )],
             ))
 
-        mock_store = MagicMock()
-        mock_store.list_traces.return_value = traces
+        store = _FakeTraceStore(traces=traces)
 
-        # Mock dspy so the test works without the dependency
-        import openjarvis.learning.agents.dspy_optimizer as mod
+        monkeypatch.setattr(mod, "HAS_DSPY", True)
+        monkeypatch.setattr(optimizer, "_run_dspy_optimization", lambda *a, **kw: {
+            "system_prompt": "You are a helpful assistant.",
+            "few_shot_examples": [{"input": "hi", "output": "hello"}],
+        })
 
-        with patch.object(mod, "HAS_DSPY", True):
-            with patch.object(optimizer, "_run_dspy_optimization", return_value={
-                "system_prompt": "You are a helpful assistant.",
-                "few_shot_examples": [{"input": "hi", "output": "hello"}],
-            }):
-                result = optimizer.optimize(mock_store)
-                assert result["status"] == "completed"
-                assert "config_updates" in result
+        result = optimizer.optimize(store)
+        assert result["status"] == "completed"
+        assert "config_updates" in result

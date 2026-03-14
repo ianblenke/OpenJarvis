@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import pytest
 
 from openjarvis.core.types import Trace
 from openjarvis.optimize.feedback.collector import FeedbackCollector
 from openjarvis.optimize.feedback.judge import TraceJudge
+from tests.fixtures.engines import FakeInferenceBackend
 
 
 def _make_trace(trace_id: str = "trace-001") -> Trace:
@@ -21,6 +22,7 @@ def _make_trace(trace_id: str = "trace-001") -> Trace:
 class TestRecordExplicit:
     """FeedbackCollector.record_explicit stores records."""
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_stores_record(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.8)
@@ -30,27 +32,32 @@ class TestRecordExplicit:
         assert records[0]["score"] == 0.8
         assert records[0]["source"] == "api"
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_custom_source(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.5, source="human")
         assert fc.get_records()[0]["source"] == "human"
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_clamps_score_above_one(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 1.5)
         assert fc.get_records()[0]["score"] == 1.0
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_clamps_score_below_zero(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", -0.5)
         assert fc.get_records()[0]["score"] == 0.0
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_has_timestamp(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.7)
         assert "timestamp" in fc.get_records()[0]
         assert fc.get_records()[0]["timestamp"] > 0
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_multiple_records(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.5)
@@ -66,16 +73,19 @@ class TestRecordExplicit:
 class TestRecordThumbs:
     """FeedbackCollector.record_thumbs converts boolean to score."""
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_thumbs_up_is_one(self) -> None:
         fc = FeedbackCollector()
         fc.record_thumbs("t1", thumbs_up=True)
         assert fc.get_records()[0]["score"] == 1.0
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_thumbs_down_is_zero(self) -> None:
         fc = FeedbackCollector()
         fc.record_thumbs("t1", thumbs_up=False)
         assert fc.get_records()[0]["score"] == 0.0
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_source_is_thumbs(self) -> None:
         fc = FeedbackCollector()
         fc.record_thumbs("t1", thumbs_up=True)
@@ -90,9 +100,9 @@ class TestRecordThumbs:
 class TestEvaluateTraces:
     """FeedbackCollector.evaluate_traces uses the judge."""
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_returns_new_records(self) -> None:
-        backend = MagicMock()
-        backend.generate.return_value = "Score: 0.85\nGood"
+        backend = FakeInferenceBackend(responses=["Score: 0.85\nGood"])
         judge = TraceJudge(backend=backend, model="m")
 
         fc = FeedbackCollector()
@@ -103,9 +113,9 @@ class TestEvaluateTraces:
         assert new[0]["trace_id"] == "t1"
         assert new[1]["trace_id"] == "t2"
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_records_stored_internally(self) -> None:
-        backend = MagicMock()
-        backend.generate.return_value = "0.7\nOk"
+        backend = FakeInferenceBackend(responses=["0.7\nOk"])
         judge = TraceJudge(backend=backend, model="m")
 
         fc = FeedbackCollector()
@@ -114,9 +124,9 @@ class TestEvaluateTraces:
         assert len(fc.get_records()) == 1
         assert fc.get_records()[0]["source"] == "judge"
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_record_has_feedback_text(self) -> None:
-        backend = MagicMock()
-        backend.generate.return_value = "Score: 0.6\nNeeds improvement"
+        backend = FakeInferenceBackend(responses=["Score: 0.6\nNeeds improvement"])
         judge = TraceJudge(backend=backend, model="m")
 
         fc = FeedbackCollector()
@@ -126,8 +136,10 @@ class TestEvaluateTraces:
         assert "feedback" in record
         assert "Needs improvement" in record["feedback"]
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_empty_traces_returns_empty(self) -> None:
-        judge = MagicMock(spec=TraceJudge)
+        backend = FakeInferenceBackend(responses=["0.5\nOk"])
+        judge = TraceJudge(backend=backend, model="m")
         fc = FeedbackCollector()
         result = fc.evaluate_traces([], judge)
         assert result == []
@@ -141,12 +153,14 @@ class TestEvaluateTraces:
 class TestGetRecords:
     """FeedbackCollector.get_records filters by trace_id."""
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_all_records_when_no_filter(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.5)
         fc.record_explicit("t2", 0.8)
         assert len(fc.get_records()) == 2
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_filter_by_trace_id(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.5)
@@ -157,11 +171,13 @@ class TestGetRecords:
         assert len(records) == 2
         assert all(r["trace_id"] == "t1" for r in records)
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_filter_returns_empty_for_unknown_id(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.5)
         assert fc.get_records(trace_id="unknown") == []
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_returns_copies(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.5)
@@ -178,6 +194,7 @@ class TestGetRecords:
 class TestStats:
     """FeedbackCollector.stats returns aggregate statistics."""
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_empty_stats(self) -> None:
         fc = FeedbackCollector()
         s = fc.stats()
@@ -185,18 +202,21 @@ class TestStats:
         assert s["mean_score"] == 0.0
         assert s["distribution"] == {"low": 0, "medium": 0, "high": 0}
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_count(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.5)
         fc.record_explicit("t2", 0.9)
         assert fc.stats()["count"] == 2
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_mean_score(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.4)
         fc.record_explicit("t2", 0.8)
         assert abs(fc.stats()["mean_score"] - 0.6) < 1e-6
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_distribution_low(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.1)
@@ -206,6 +226,7 @@ class TestStats:
         assert s["distribution"]["medium"] == 0
         assert s["distribution"]["high"] == 0
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_distribution_medium(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.5)
@@ -213,6 +234,7 @@ class TestStats:
         s = fc.stats()
         assert s["distribution"]["medium"] == 2
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_distribution_high(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("t1", 0.8)
@@ -220,6 +242,7 @@ class TestStats:
         s = fc.stats()
         assert s["distribution"]["high"] == 2
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_distribution_mixed(self) -> None:
         fc = FeedbackCollector()
         fc.record_explicit("a", 0.1)   # low
@@ -230,6 +253,7 @@ class TestStats:
         assert s["distribution"]["medium"] == 1
         assert s["distribution"]["high"] == 1
 
+    @pytest.mark.spec("REQ-learning.feedback-collector")
     def test_stats_with_thumbs(self) -> None:
         fc = FeedbackCollector()
         fc.record_thumbs("t1", thumbs_up=True)

@@ -49,6 +49,7 @@ def _setup(tmp_path: Path, records: list[TelemetryRecord] | None = None):
 
 
 class TestTelemetryAggregator:
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_empty_db_summary(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path)
         s = agg.summary()
@@ -57,11 +58,13 @@ class TestTelemetryAggregator:
         assert s.total_cost == 0.0
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_record_count(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path, [_make_record(), _make_record()])
         assert agg.record_count() == 2
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_single_model_stats(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path, [_make_record(model_id="m1")])
         stats = agg.per_model_stats()
@@ -70,6 +73,7 @@ class TestTelemetryAggregator:
         assert stats[0].call_count == 1
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_multiple_models_grouped(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path, [
             _make_record(model_id="m1"),
@@ -85,6 +89,7 @@ class TestTelemetryAggregator:
         assert stats[1].call_count == 1
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_per_engine_stats(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path, [
             _make_record(engine="ollama"),
@@ -97,6 +102,7 @@ class TestTelemetryAggregator:
         assert stats[0].call_count == 2
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_top_models_limit(self, tmp_path: Path) -> None:
         records = [_make_record(model_id=f"m{i}") for i in range(10)]
         agg = _setup(tmp_path, records)
@@ -104,6 +110,7 @@ class TestTelemetryAggregator:
         assert len(top) == 3
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_top_models_ordering(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path, [
             _make_record(model_id="rare"),
@@ -116,6 +123,7 @@ class TestTelemetryAggregator:
         assert top[0].call_count == 3
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_summary_totals(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path, [
             _make_record(prompt_tokens=10, completion_tokens=5, cost=0.001),
@@ -127,6 +135,7 @@ class TestTelemetryAggregator:
         assert s.total_cost == pytest.approx(0.003)
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_summary_includes_sub_stats(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path, [_make_record()])
         s = agg.summary()
@@ -134,6 +143,7 @@ class TestTelemetryAggregator:
         assert len(s.per_engine) >= 1
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_time_range_since(self, tmp_path: Path) -> None:
         now = time.time()
         agg = _setup(tmp_path, [
@@ -146,6 +156,7 @@ class TestTelemetryAggregator:
         assert total == 2
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_time_range_until(self, tmp_path: Path) -> None:
         now = time.time()
         agg = _setup(tmp_path, [
@@ -157,6 +168,7 @@ class TestTelemetryAggregator:
         assert total == 1
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_time_range_since_and_until(self, tmp_path: Path) -> None:
         now = time.time()
         agg = _setup(tmp_path, [
@@ -169,6 +181,7 @@ class TestTelemetryAggregator:
         assert total == 1
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_export_records_all(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path, [_make_record(), _make_record()])
         records = agg.export_records()
@@ -176,6 +189,7 @@ class TestTelemetryAggregator:
         assert "model_id" in records[0]
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_export_records_filtered(self, tmp_path: Path) -> None:
         now = time.time()
         agg = _setup(tmp_path, [
@@ -186,6 +200,7 @@ class TestTelemetryAggregator:
         assert len(records) == 1
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_clear_removes_all(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path, [_make_record(), _make_record(), _make_record()])
         deleted = agg.clear()
@@ -193,12 +208,14 @@ class TestTelemetryAggregator:
         assert agg.record_count() == 0
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_clear_empty_db(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path)
         deleted = agg.clear()
         assert deleted == 0
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.store.query")
     def test_close(self, tmp_path: Path) -> None:
         agg = _setup(tmp_path)
         agg.close()
@@ -208,17 +225,20 @@ class TestTelemetryAggregator:
 
 
 class TestDataclassDefaults:
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_model_stats_defaults(self) -> None:
         ms = ModelStats()
         assert ms.model_id == ""
         assert ms.call_count == 0
         assert ms.total_tokens == 0
 
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_engine_stats_defaults(self) -> None:
         es = EngineStats()
         assert es.engine == ""
         assert es.call_count == 0
 
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_aggregated_stats_defaults(self) -> None:
         a = AggregatedStats()
         assert a.total_calls == 0

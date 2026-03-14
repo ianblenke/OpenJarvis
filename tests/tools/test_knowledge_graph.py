@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.tools.storage.knowledge_graph import (
     Entity,
     KnowledgeGraphMemory,
@@ -13,6 +15,8 @@ class TestKnowledgeGraph:
     def _make_kg(self, tmp_path):
         return KnowledgeGraphMemory(db_path=tmp_path / "kg.db")
 
+    @pytest.mark.spec("REQ-tools.retrieval")
+    @pytest.mark.spec("REQ-storage.knowledge-graph")
     def test_add_and_get_entity(self, tmp_path):
         kg = self._make_kg(tmp_path)
         entity = Entity(
@@ -26,11 +30,13 @@ class TestKnowledgeGraph:
         assert result.properties["field"] == "AI"
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_entity_not_found(self, tmp_path):
         kg = self._make_kg(tmp_path)
         assert kg.get_entity("nonexistent") is None
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_add_relation(self, tmp_path):
         kg = self._make_kg(tmp_path)
         kg.add_entity(Entity(entity_id="a", entity_type="concept", name="A"))
@@ -42,6 +48,7 @@ class TestKnowledgeGraph:
         assert kg.relation_count() == 1
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_neighbors(self, tmp_path):
         kg = self._make_kg(tmp_path)
         kg.add_entity(Entity(entity_id="a", entity_type="concept", name="A"))
@@ -55,6 +62,7 @@ class TestKnowledgeGraph:
         assert names == {"B", "C"}
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_neighbors_with_type_filter(self, tmp_path):
         kg = self._make_kg(tmp_path)
         kg.add_entity(Entity(entity_id="a", entity_type="concept", name="A"))
@@ -70,6 +78,7 @@ class TestKnowledgeGraph:
         assert neighbors[0].name == "B"
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_query_pattern_entities(self, tmp_path):
         kg = self._make_kg(tmp_path)
         kg.add_entity(Entity(entity_id="t1", entity_type="tool", name="Calculator"))
@@ -79,6 +88,7 @@ class TestKnowledgeGraph:
         assert len(result.entities) == 2
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_query_pattern_relations(self, tmp_path):
         kg = self._make_kg(tmp_path)
         kg.add_entity(Entity(entity_id="a", entity_type="x", name="A"))
@@ -88,6 +98,7 @@ class TestKnowledgeGraph:
         assert len(result.relations) == 1
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_memory_backend_store_retrieve(self, tmp_path):
         kg = self._make_kg(tmp_path)
         kg.store("doc1", "hello world", metadata={"name": "greeting"})
@@ -96,6 +107,7 @@ class TestKnowledgeGraph:
         assert "hello world" in content
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_memory_backend_search(self, tmp_path):
         kg = self._make_kg(tmp_path)
         kg.store("doc1", "machine learning", metadata={"name": "ML"})
@@ -104,6 +116,7 @@ class TestKnowledgeGraph:
         assert len(results) >= 1
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_delete(self, tmp_path):
         kg = self._make_kg(tmp_path)
         kg.add_entity(Entity(entity_id="x", entity_type="test", name="X"))
@@ -111,6 +124,7 @@ class TestKnowledgeGraph:
         assert kg.get_entity("x") is None
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_clear(self, tmp_path):
         kg = self._make_kg(tmp_path)
         kg.add_entity(Entity(entity_id="a", entity_type="test", name="A"))
@@ -119,6 +133,7 @@ class TestKnowledgeGraph:
         assert kg.entity_count() == 0
         kg.close()
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_entity_count(self, tmp_path):
         kg = self._make_kg(tmp_path)
         assert kg.entity_count() == 0

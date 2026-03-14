@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 from typing import Any, Dict
-from unittest.mock import MagicMock
 
 import pytest
 
 from openjarvis.core.types import StepType, Trace, TraceStep
-from openjarvis.evals.core.backend import InferenceBackend
 from openjarvis.evals.core.types import RunSummary
 from openjarvis.optimize.llm_optimizer import LLMOptimizer
 from openjarvis.optimize.types import (
@@ -20,6 +18,7 @@ from openjarvis.optimize.types import (
     TrialFeedback,
     TrialResult,
 )
+from tests.fixtures.engines import FakeInferenceBackend
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -59,12 +58,9 @@ def _make_search_space() -> SearchSpace:
     )
 
 
-def _make_mock_backend(response: str) -> MagicMock:
-    """Create a mock InferenceBackend that returns the given response."""
-    backend = MagicMock(spec=InferenceBackend)
-    backend.backend_id = "mock"
-    backend.generate.return_value = response
-    return backend
+def _make_backend(response: str) -> FakeInferenceBackend:
+    """Create a FakeInferenceBackend that returns the given response."""
+    return FakeInferenceBackend(responses=[response])
 
 
 def _make_trial_result(
@@ -165,29 +161,34 @@ def _make_run_summary(
 class TestInit:
     """Tests for LLMOptimizer.__init__."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_stores_search_space(self) -> None:
         space = _make_search_space()
         opt = LLMOptimizer(search_space=space)
         assert opt.search_space is space
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_stores_optimizer_model(self) -> None:
         space = _make_search_space()
         opt = LLMOptimizer(search_space=space, optimizer_model="gpt-4o")
         assert opt.optimizer_model == "gpt-4o"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_default_optimizer_model(self) -> None:
         space = _make_search_space()
         opt = LLMOptimizer(search_space=space)
         assert opt.optimizer_model == "claude-sonnet-4-6"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_stores_optimizer_backend(self) -> None:
         space = _make_search_space()
-        backend = _make_mock_backend("")
+        backend = _make_backend("")
         opt = LLMOptimizer(
             search_space=space, optimizer_backend=backend
         )
         assert opt.optimizer_backend is backend
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_default_backend_is_none(self) -> None:
         space = _make_search_space()
         opt = LLMOptimizer(search_space=space)
@@ -202,6 +203,7 @@ class TestInit:
 class TestProposeInitial:
     """Tests for LLMOptimizer.propose_initial."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_returns_trial_config(self) -> None:
         response = json.dumps({
             "params": {
@@ -211,7 +213,7 @@ class TestProposeInitial:
             "reasoning": "Balanced starting point",
         })
         response = f"```json\n{response}\n```"
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -223,33 +225,36 @@ class TestProposeInitial:
         assert config.reasoning == "Balanced starting point"
         assert len(config.trial_id) == 12
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_calls_backend_generate(self) -> None:
         response = '```json\n{"params": {}, "reasoning": "test"}\n```'
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
         )
         opt.propose_initial()
-        backend.generate.assert_called_once()
-        call_kwargs = backend.generate.call_args
-        assert call_kwargs.kwargs["model"] == "claude-sonnet-4-6"
-        assert call_kwargs.kwargs["temperature"] == 0.7
+        assert backend.call_count == 1
+        last_call = backend.call_history[-1]
+        assert last_call["model"] == "claude-sonnet-4-6"
+        assert last_call["temperature"] == 0.7
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_prompt_contains_search_space(self) -> None:
         response = '```json\n{"params": {}, "reasoning": "ok"}\n```'
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
         )
         opt.propose_initial()
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "Search Space" in prompt
         assert "agent.type" in prompt
         assert "intelligence.temperature" in prompt
         assert "Objective" in prompt
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_raises_without_backend(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         with pytest.raises(ValueError, match="optimizer_backend"):
@@ -264,6 +269,7 @@ class TestProposeInitial:
 class TestProposeNext:
     """Tests for LLMOptimizer.propose_next."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_returns_trial_config_with_history(self) -> None:
         response = json.dumps({
             "params": {
@@ -274,7 +280,7 @@ class TestProposeNext:
             "reasoning": "Lower temp for better accuracy",
         })
         response = f"```json\n{response}\n```"
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -285,9 +291,10 @@ class TestProposeNext:
         assert config.params["intelligence.temperature"] == 0.2
         assert config.reasoning == "Lower temp for better accuracy"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_prompt_includes_history(self) -> None:
         response = '```json\n{"params": {}, "reasoning": "ok"}\n```'
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -300,49 +307,53 @@ class TestProposeNext:
             ),
         ]
         opt.propose_next(history)
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "Optimization History" in prompt
         assert "Trial 1" in prompt
         assert "0.75" in prompt
         assert "Good but slow" in prompt
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_prompt_includes_traces(self) -> None:
         response = '```json\n{"params": {}, "reasoning": "ok"}\n```'
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
         )
         traces = [_make_trace()]
         opt.propose_next([], traces=traces)
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "Execution Traces" in prompt
         assert "trace-001" in prompt
         assert "What is 2+2?" in prompt
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_empty_history(self) -> None:
         response = (
             '```json\n{"params": {"agent.type": "simple"},'
             ' "reasoning": "start simple"}\n```'
         )
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
         )
         config = opt.propose_next([])
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "No trials have been run yet" in prompt
         assert config.params["agent.type"] == "simple"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_raises_without_backend(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         with pytest.raises(ValueError, match="optimizer_backend"):
             opt.propose_next([])
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_prompt_includes_failure_modes(self) -> None:
         response = '```json\n{"params": {}, "reasoning": "fix failures"}\n```'
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -353,7 +364,7 @@ class TestProposeNext:
             ),
         ]
         opt.propose_next(history)
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "timeout on long inputs" in prompt
         assert "JSON parse error" in prompt
 
@@ -366,8 +377,9 @@ class TestProposeNext:
 class TestAnalyzeTrial:
     """Tests for LLMOptimizer.analyze_trial."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_returns_trial_feedback(self) -> None:
-        backend = _make_mock_backend(
+        backend = _make_backend(
             "The configuration showed strong accuracy at 0.80 "
             "but latency could be improved."
         )
@@ -385,8 +397,9 @@ class TestAnalyzeTrial:
         assert isinstance(result, TrialFeedback)
         assert "accuracy" in result.summary_text.lower()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_prompt_contains_config(self) -> None:
-        backend = _make_mock_backend("Analysis here.")
+        backend = _make_backend("Analysis here.")
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -401,14 +414,15 @@ class TestAnalyzeTrial:
         )
         summary = _make_run_summary()
         opt.analyze_trial(trial, summary)
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "agent.type" in prompt
         assert "orchestrator" in prompt
         assert "0.5" in prompt
         assert "Testing mid-range temperature" in prompt
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_prompt_contains_results(self) -> None:
-        backend = _make_mock_backend("Analysis here.")
+        backend = _make_backend("Analysis here.")
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -416,13 +430,14 @@ class TestAnalyzeTrial:
         trial = TrialConfig(trial_id="t1", params={})
         summary = _make_run_summary(accuracy=0.85, latency=2.1, cost=0.05)
         opt.analyze_trial(trial, summary)
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "0.8500" in prompt
         assert "2.1000" in prompt
         assert "0.0500" in prompt
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_prompt_contains_per_subject(self) -> None:
-        backend = _make_mock_backend("Analysis here.")
+        backend = _make_backend("Analysis here.")
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -430,12 +445,13 @@ class TestAnalyzeTrial:
         trial = TrialConfig(trial_id="t1", params={})
         summary = _make_run_summary()
         opt.analyze_trial(trial, summary)
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "Per-Subject" in prompt
         assert "math" in prompt
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_prompt_contains_traces(self) -> None:
-        backend = _make_mock_backend("Analysis with traces.")
+        backend = _make_backend("Analysis with traces.")
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -444,10 +460,11 @@ class TestAnalyzeTrial:
         summary = _make_run_summary()
         traces = [_make_trace()]
         opt.analyze_trial(trial, summary, traces=traces)
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "Sample Traces" in prompt
         assert "trace-001" in prompt
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_raises_without_backend(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         trial = TrialConfig(trial_id="t1", params={})
@@ -455,8 +472,9 @@ class TestAnalyzeTrial:
         with pytest.raises(ValueError, match="optimizer_backend"):
             opt.analyze_trial(trial, summary)
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_uses_low_temperature(self) -> None:
-        backend = _make_mock_backend("Analysis.")
+        backend = _make_backend("Analysis.")
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -464,8 +482,8 @@ class TestAnalyzeTrial:
         trial = TrialConfig(trial_id="t1", params={})
         summary = _make_run_summary()
         opt.analyze_trial(trial, summary)
-        call_kwargs = backend.generate.call_args
-        assert call_kwargs.kwargs["temperature"] == 0.3
+        last_call = backend.call_history[-1]
+        assert last_call["temperature"] == 0.3
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +497,7 @@ class TestParseConfigResponse:
     def _make_optimizer(self) -> LLMOptimizer:
         return LLMOptimizer(search_space=_make_search_space())
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_json_code_block(self) -> None:
         opt = self._make_optimizer()
         response = (
@@ -493,6 +512,7 @@ class TestParseConfigResponse:
         assert config.params["agent.type"] == "native_react"
         assert config.reasoning == "Best for tool use"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_generic_code_block(self) -> None:
         opt = self._make_optimizer()
         response = (
@@ -504,6 +524,7 @@ class TestParseConfigResponse:
         config = opt._parse_config_response(response)
         assert config.params["intelligence.temperature"] == 0.1
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_raw_json(self) -> None:
         opt = self._make_optimizer()
         response = (
@@ -514,6 +535,7 @@ class TestParseConfigResponse:
         assert config.params["agent.max_turns"] == 10
         assert config.reasoning == "More turns"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_unparseable_response(self) -> None:
         opt = self._make_optimizer()
         response = "I cannot produce a valid configuration right now."
@@ -522,12 +544,14 @@ class TestParseConfigResponse:
         assert config.params == {"engine": "ollama"}
         assert "Failed to parse" in config.reasoning
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_trial_id_is_12_chars(self) -> None:
         opt = self._make_optimizer()
         response = '```json\n{"params": {}, "reasoning": ""}\n```'
         config = opt._parse_config_response(response)
         assert len(config.trial_id) == 12
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_missing_reasoning_key(self) -> None:
         opt = self._make_optimizer()
         response = '```json\n{"params": {"agent.type": "simple"}}\n```'
@@ -535,6 +559,7 @@ class TestParseConfigResponse:
         assert config.params["agent.type"] == "simple"
         assert config.reasoning == ""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_missing_params_key(self) -> None:
         opt = self._make_optimizer()
         response = '```json\n{"reasoning": "just thinking"}\n```'
@@ -543,6 +568,7 @@ class TestParseConfigResponse:
         assert config.params == {"engine": "ollama"}
         assert config.reasoning == "just thinking"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_json_with_surrounding_text(self) -> None:
         opt = self._make_optimizer()
         response = (
@@ -564,6 +590,7 @@ class TestParseConfigResponse:
         assert config.params["intelligence.temperature"] == 0.4
         assert config.params["agent.max_turns"] == 20
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_invalid_json_in_code_block_falls_through(self) -> None:
         """If ```json block has invalid JSON, fall back to raw search."""
         opt = self._make_optimizer()
@@ -585,6 +612,7 @@ class TestParseConfigResponse:
 class TestFormatHistory:
     """Tests for LLMOptimizer._format_history."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_single_trial(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         history = [_make_trial_result(trial_id="abc")]
@@ -594,6 +622,7 @@ class TestFormatHistory:
         assert "0.7500" in result
         assert "Decent results" in result
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_multiple_trials(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         history = [
@@ -606,6 +635,7 @@ class TestFormatHistory:
         assert "t1" in result
         assert "t2" in result
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_includes_failure_modes(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         history = [
@@ -617,6 +647,7 @@ class TestFormatHistory:
         assert "timeout" in result
         assert "parse_error" in result
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_includes_params(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         history = [
@@ -627,11 +658,13 @@ class TestFormatHistory:
         result = opt._format_history(history)
         assert "native_react" in result
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_empty_history(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         result = opt._format_history([])
         assert result == ""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_marks_frontier_trials(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         history = [
@@ -655,6 +688,7 @@ class TestFormatHistory:
 class TestFormatTraces:
     """Tests for LLMOptimizer._format_traces."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_single_trace(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         traces = [_make_trace()]
@@ -664,6 +698,7 @@ class TestFormatTraces:
         assert "orchestrator" in result
         assert "success" in result
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_limits_to_last_10(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         traces = [
@@ -678,6 +713,7 @@ class TestFormatTraces:
         assert "trace-000" not in result
         assert "trace-009" not in result
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_truncates_long_outputs(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         long_result = "x" * 1000
@@ -688,6 +724,7 @@ class TestFormatTraces:
         # Should NOT contain the full 1000 chars
         assert long_result not in result
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_includes_steps(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         traces = [_make_trace(num_steps=3)]
@@ -696,6 +733,7 @@ class TestFormatTraces:
         assert "generate" in result
         assert "tool_call" in result
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_shows_feedback(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         trace = _make_trace()
@@ -703,11 +741,13 @@ class TestFormatTraces:
         result = opt._format_traces([trace])
         assert "0.9" in result
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_empty_traces(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         result = opt._format_traces([])
         assert result == ""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_truncates_long_step_data(self) -> None:
         opt = LLMOptimizer(search_space=_make_search_space())
         trace = _make_trace(num_steps=0)
@@ -736,6 +776,7 @@ class TestFormatTraces:
 class TestIntegration:
     """End-to-end tests with mocked backend."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_propose_initial_then_next(self) -> None:
         """Simulate a two-step optimization loop."""
         space = _make_search_space()
@@ -753,9 +794,7 @@ class TestIntegration:
             '"reasoning": "Switch to ReAct for better tool use"}\n'
             '```'
         )
-        backend = MagicMock(spec=InferenceBackend)
-        backend.backend_id = "mock"
-        backend.generate.side_effect = [initial_response, next_response]
+        backend = FakeInferenceBackend(responses=[initial_response, next_response])
 
         opt = LLMOptimizer(
             search_space=space, optimizer_backend=backend
@@ -777,6 +816,7 @@ class TestIntegration:
         assert config2.params["agent.type"] == "native_react"
         assert config2.params["intelligence.temperature"] == 0.2
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_full_loop_with_analysis(self) -> None:
         """Simulate propose -> evaluate -> analyze."""
         space = _make_search_space()
@@ -791,12 +831,10 @@ class TestIntegration:
             "The main bottleneck is latency due to multi-turn reasoning. "
             "Reducing max_turns or switching to native_react may help."
         )
-        backend = MagicMock(spec=InferenceBackend)
-        backend.backend_id = "mock"
-        backend.generate.side_effect = [
+        backend = FakeInferenceBackend(responses=[
             propose_response,
             analysis_response,
-        ]
+        ])
 
         opt = LLMOptimizer(
             search_space=space, optimizer_backend=backend
@@ -809,18 +847,19 @@ class TestIntegration:
         assert "orchestrator" in feedback.summary_text
         assert "latency" in feedback.summary_text
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_custom_optimizer_model(self) -> None:
         """Verify custom model is passed to backend."""
         response = '```json\n{"params": {}, "reasoning": "ok"}\n```'
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_model="gpt-4o",
             optimizer_backend=backend,
         )
         opt.propose_initial()
-        call_kwargs = backend.generate.call_args
-        assert call_kwargs.kwargs["model"] == "gpt-4o"
+        last_call = backend.call_history[-1]
+        assert last_call["model"] == "gpt-4o"
 
 
 # ---------------------------------------------------------------------------
@@ -831,6 +870,7 @@ class TestIntegration:
 class TestAnalyzeTrialStructured:
     """Tests for analyze_trial returning TrialFeedback."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_analyze_trial_returns_trial_feedback(self) -> None:
         """Mock backend returns structured JSON -> TrialFeedback."""
         feedback_json = json.dumps({
@@ -841,7 +881,7 @@ class TestAnalyzeTrialStructured:
             "target_primitive": "agent",
         })
         response = f"```json\n{feedback_json}\n```"
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -856,9 +896,10 @@ class TestAnalyzeTrialStructured:
         assert result.suggested_changes == ["reduce max_turns"]
         assert result.target_primitive == "agent"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_analyze_trial_fallback_to_text(self) -> None:
         """Unparseable response wraps as summary_text."""
-        backend = _make_mock_backend(
+        backend = _make_backend(
             "The config showed good results overall but could use improvement."
         )
         opt = LLMOptimizer(
@@ -873,6 +914,7 @@ class TestAnalyzeTrialStructured:
         assert result.failure_patterns == []
         assert result.target_primitive == ""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_analyze_trial_with_sample_scores(self) -> None:
         """Verify sample_scores are included in the prompt."""
         feedback_json = json.dumps({
@@ -883,7 +925,7 @@ class TestAnalyzeTrialStructured:
             "target_primitive": "",
         })
         response = f"```json\n{feedback_json}\n```"
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -895,7 +937,7 @@ class TestAnalyzeTrialStructured:
             SampleScore(record_id="r2", is_correct=False, error="timeout"),
         ]
         opt.analyze_trial(trial, summary, sample_scores=scores)
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "Per-Sample Scores" in prompt
         assert "r2" in prompt
 
@@ -908,6 +950,7 @@ class TestAnalyzeTrialStructured:
 class TestProposeTargeted:
     """Tests for LLMOptimizer.propose_targeted."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_preserves_non_target_params(self) -> None:
         response = json.dumps({
             "params": {
@@ -918,7 +961,7 @@ class TestProposeTargeted:
             "reasoning": "Change agent only",
         })
         response = f"```json\n{response}\n```"
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -938,16 +981,17 @@ class TestProposeTargeted:
         # Non-target params should be preserved from base
         assert result.params["intelligence.temperature"] == 0.5
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_prompt_mentions_target_primitive(self) -> None:
         response = '```json\n{"params": {}, "reasoning": "ok"}\n```'
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
         )
         base_config = TrialConfig(trial_id="base", params={})
         opt.propose_targeted([], base_config, "intelligence")
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "intelligence" in prompt
         assert "ONLY change" in prompt
 
@@ -960,13 +1004,14 @@ class TestProposeTargeted:
 class TestProposeMerge:
     """Tests for LLMOptimizer.propose_merge."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_includes_candidates_in_prompt(self) -> None:
         response = (
             '```json\n{"params": {"agent.type":'
             ' "orchestrator"}, "reasoning":'
             ' "merged"}\n```'
         )
-        backend = _make_mock_backend(response)
+        backend = _make_backend(response)
         opt = LLMOptimizer(
             search_space=_make_search_space(),
             optimizer_backend=backend,
@@ -977,7 +1022,7 @@ class TestProposeMerge:
         ]
         result = opt.propose_merge(candidates, [])
         assert isinstance(result, TrialConfig)
-        prompt = backend.generate.call_args.args[0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "Candidate 1" in prompt
         assert "Candidate 2" in prompt
         assert "c1" in prompt

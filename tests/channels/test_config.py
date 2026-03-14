@@ -5,15 +5,19 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from openjarvis.core.config import ChannelConfig, JarvisConfig, load_config
 
 
 class TestChannelConfigDefaults:
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_channel_config_defaults(self) -> None:
         cfg = ChannelConfig()
         assert cfg.enabled is False
         assert cfg.default_agent == "simple"
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_channel_config_custom(self) -> None:
         cfg = ChannelConfig(
             enabled=True,
@@ -24,11 +28,13 @@ class TestChannelConfigDefaults:
 
 
 class TestChannelConfigInJarvisConfig:
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_channel_config_in_jarvis_config(self) -> None:
         cfg = JarvisConfig()
         assert hasattr(cfg, "channel")
         assert isinstance(cfg.channel, ChannelConfig)
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_jarvis_config_channel_defaults(self) -> None:
         cfg = JarvisConfig()
         assert cfg.channel.enabled is False
@@ -36,6 +42,7 @@ class TestChannelConfigInJarvisConfig:
 
 
 class TestLoadConfigWithChannel:
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_load_config_with_channel_section(self, tmp_path: Path) -> None:
         """Create a temp TOML with [channel] section and verify values."""
         toml_content = textwrap.dedent("""\
@@ -50,6 +57,7 @@ class TestLoadConfigWithChannel:
         assert cfg.channel.enabled is True
         assert cfg.channel.default_agent == "orchestrator"
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_load_config_without_channel_section(self, tmp_path: Path) -> None:
         """When no [channel] section, defaults should apply."""
         toml_content = textwrap.dedent("""\
@@ -63,6 +71,7 @@ class TestLoadConfigWithChannel:
         assert cfg.channel.enabled is False
         assert cfg.channel.default_channel == ""
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_load_config_partial_channel_section(self, tmp_path: Path) -> None:
         """Partial [channel] section overlays only specified fields."""
         toml_content = textwrap.dedent("""\

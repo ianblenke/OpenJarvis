@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+
 from openjarvis.core.types import StepType, Trace, TraceStep
 from openjarvis.learning.learning_orchestrator import LearningOrchestrator
 from openjarvis.traces.store import TraceStore
@@ -79,6 +81,7 @@ def _populate_store(store: TraceStore, count: int = 10) -> None:
 
 
 class TestLearningOrchestrator:
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_run_with_no_traces_is_noop(self, tmp_path: Path) -> None:
         """Empty trace store -> status='skipped', reason mentions no data."""
         db = tmp_path / "traces.db"
@@ -96,6 +99,7 @@ class TestLearningOrchestrator:
         assert "timestamp" in result
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_run_extracts_data_and_updates_routing(self, tmp_path: Path) -> None:
         """With traces present, run extracts data and result has counts."""
         db = tmp_path / "traces.db"
@@ -116,6 +120,7 @@ class TestLearningOrchestrator:
         assert "timestamp" in result
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_run_with_eval_gate_rejects(self, tmp_path: Path) -> None:
         """eval_fn returns worse score after learning -> accepted=False."""
         db = tmp_path / "traces.db"
@@ -146,6 +151,7 @@ class TestLearningOrchestrator:
         assert "timestamp" in result
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_run_with_eval_gate_accepts(self, tmp_path: Path) -> None:
         """eval_fn returns better score after learning -> accepted=True."""
         db = tmp_path / "traces.db"
@@ -176,6 +182,7 @@ class TestLearningOrchestrator:
         assert "timestamp" in result
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_run_records_timestamp(self, tmp_path: Path) -> None:
         """Result always has a 'timestamp' key regardless of outcome."""
         db = tmp_path / "traces.db"

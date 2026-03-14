@@ -1,7 +1,11 @@
 """Tests for LearningOrchestrator integration with SystemBuilder."""
 
 
+import pytest
+
+
 class TestSystemLearningIntegration:
+    @pytest.mark.spec("REQ-learning.registration")
     def test_learning_orchestrator_not_created_when_disabled(self):
         """Default config has training_enabled=False, so no orchestrator."""
         from openjarvis.core.config import JarvisConfig
@@ -12,6 +16,7 @@ class TestSystemLearningIntegration:
         result = SystemBuilder._setup_learning_orchestrator(config)
         assert result is None
 
+    @pytest.mark.spec("REQ-learning.registration")
     def test_learning_orchestrator_created_when_enabled(self):
         """When training_enabled=True, orchestrator is created."""
         from openjarvis.core.config import JarvisConfig
@@ -23,6 +28,7 @@ class TestSystemLearningIntegration:
         result = SystemBuilder._setup_learning_orchestrator(config)
         assert isinstance(result, LearningOrchestrator)
 
+    @pytest.mark.spec("REQ-learning.registration")
     def test_config_has_training_fields(self):
         """LearningConfig has the training pipeline fields."""
         from openjarvis.core.config import LearningConfig
@@ -35,6 +41,7 @@ class TestSystemLearningIntegration:
         assert config.intelligence.sft.min_pairs == 10
         assert config.min_improvement == 0.02
 
+    @pytest.mark.spec("REQ-learning.registration")
     def test_training_components_exported(self):
         """Learning package exports all training components."""
         from openjarvis.learning import (

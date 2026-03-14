@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.optimize.search_space import (
     DEFAULT_SEARCH_SPACE,
     build_search_space,
@@ -16,6 +18,7 @@ from openjarvis.optimize.types import SearchSpace
 class TestBuildSearchSpace:
     """Tests for the build_search_space() factory function."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_basic_build(self) -> None:
         config = {
             "optimize": {
@@ -52,6 +55,7 @@ class TestBuildSearchSpace:
         assert dim.description == "Agent architecture"
         assert dim.primitive == "agent"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_fixed_params_preserved(self) -> None:
         config = {
             "optimize": {
@@ -68,6 +72,7 @@ class TestBuildSearchSpace:
             "model": "qwen3:8b",
         }
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_constraints_parsed(self) -> None:
         config = {
             "optimize": {
@@ -85,6 +90,7 @@ class TestBuildSearchSpace:
         assert "max_turns must be >= 1" in space.constraints
         assert "temperature should be <= 1.0" in space.constraints
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_continuous_dimension_build(self) -> None:
         config = {
             "optimize": {
@@ -106,6 +112,7 @@ class TestBuildSearchSpace:
         assert dim.high == 1.0
         assert dim.primitive == "intelligence"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_integer_dimension_build(self) -> None:
         config = {
             "optimize": {
@@ -125,6 +132,7 @@ class TestBuildSearchSpace:
         assert dim.low == 1
         assert dim.high == 30
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_subset_dimension_build(self) -> None:
         config = {
             "optimize": {
@@ -151,6 +159,7 @@ class TestBuildSearchSpace:
         ]
         assert dim.primitive == "tools"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_text_dimension_build(self) -> None:
         config = {
             "optimize": {
@@ -169,6 +178,7 @@ class TestBuildSearchSpace:
         assert dim.values == []
         assert dim.primitive == "intelligence"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_multiple_dimensions(self) -> None:
         config = {
             "optimize": {
@@ -195,18 +205,21 @@ class TestBuildSearchSpace:
         space = build_search_space(config)
         assert len(space.dimensions) == 3
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_empty_config(self) -> None:
         space = build_search_space({})
         assert space.dimensions == []
         assert space.fixed == {}
         assert space.constraints == []
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_empty_optimize_section(self) -> None:
         space = build_search_space({"optimize": {}})
         assert space.dimensions == []
         assert space.fixed == {}
         assert space.constraints == []
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_primitive_inferred_from_name(self) -> None:
         config = {
             "optimize": {
@@ -228,6 +241,7 @@ class TestBuildSearchSpace:
         assert space.dimensions[0].primitive == "learning"
         assert space.dimensions[1].primitive == "engine"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_no_dot_in_name_gives_empty_primitive(self) -> None:
         config = {
             "optimize": {
@@ -243,6 +257,7 @@ class TestBuildSearchSpace:
         space = build_search_space(config)
         assert space.dimensions[0].primitive == ""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_missing_description_defaults_empty(self) -> None:
         config = {
             "optimize": {
@@ -258,6 +273,7 @@ class TestBuildSearchSpace:
         space = build_search_space(config)
         assert space.dimensions[0].description == ""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_missing_values_defaults_empty_list(self) -> None:
         config = {
             "optimize": {
@@ -272,6 +288,7 @@ class TestBuildSearchSpace:
         space = build_search_space(config)
         assert space.dimensions[0].values == []
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_missing_constraints_section(self) -> None:
         config = {
             "optimize": {
@@ -305,9 +322,11 @@ def _find_dim(name: str):
 class TestDefaultSearchSpace:
     """Tests for the DEFAULT_SEARCH_SPACE module-level constant."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_is_search_space(self) -> None:
         assert isinstance(DEFAULT_SEARCH_SPACE, SearchSpace)
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_has_all_five_primitives(self) -> None:
         primitives = {dim.primitive for dim in _DIMS}
         assert "intelligence" in primitives
@@ -316,6 +335,7 @@ class TestDefaultSearchSpace:
         assert "tools" in primitives
         assert "learning" in primitives
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_intelligence_dimensions(self) -> None:
         intel_dims = [d for d in _DIMS if d.primitive == "intelligence"]
         intel_names = {d.name for d in intel_dims}
@@ -325,27 +345,32 @@ class TestDefaultSearchSpace:
         assert "intelligence.top_p" in intel_names
         assert "intelligence.system_prompt" in intel_names
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_intelligence_model_is_categorical(self) -> None:
         dim = _find_dim("intelligence.model")
         assert dim.dim_type == "categorical"
         assert len(dim.values) > 0
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_intelligence_temperature_range(self) -> None:
         dim = _find_dim("intelligence.temperature")
         assert dim.dim_type == "continuous"
         assert dim.low == 0.0
         assert dim.high == 1.0
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_intelligence_max_tokens_range(self) -> None:
         dim = _find_dim("intelligence.max_tokens")
         assert dim.dim_type == "integer"
         assert dim.low == 256
         assert dim.high == 8192
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_intelligence_system_prompt_is_text(self) -> None:
         dim = _find_dim("intelligence.system_prompt")
         assert dim.dim_type == "text"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_engine_backend_options(self) -> None:
         dim = _find_dim("engine.backend")
         assert dim.dim_type == "categorical"
@@ -356,6 +381,7 @@ class TestDefaultSearchSpace:
         }
         assert set(dim.values) == expected
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_agent_type_options(self) -> None:
         dim = _find_dim("agent.type")
         assert dim.dim_type == "categorical"
@@ -365,33 +391,39 @@ class TestDefaultSearchSpace:
         }
         assert set(dim.values) == expected
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_agent_max_turns_range(self) -> None:
         dim = _find_dim("agent.max_turns")
         assert dim.dim_type == "integer"
         assert dim.low == 1
         assert dim.high == 30
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_tools_tool_set_is_subset(self) -> None:
         dim = _find_dim("tools.tool_set")
         assert dim.dim_type == "subset"
         assert "calculator" in dim.values
         assert "think" in dim.values
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_learning_routing_policy(self) -> None:
         dim = _find_dim("learning.routing_policy")
         assert dim.dim_type == "categorical"
         expected = {"heuristic", "grpo", "bandit", "learned"}
         assert set(dim.values) == expected
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_has_constraints(self) -> None:
         assert len(DEFAULT_SEARCH_SPACE.constraints) > 0
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_all_dimensions_have_descriptions(self) -> None:
         for dim in _DIMS:
             assert dim.description != "", (
                 f"Dimension {dim.name} has no description"
             )
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_all_dimensions_have_primitives(self) -> None:
         for dim in _DIMS:
             assert dim.primitive != "", (
@@ -407,11 +439,13 @@ class TestDefaultSearchSpace:
 class TestToPromptDescription:
     """Tests for SearchSpace.to_prompt_description()."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_default_space_renders(self) -> None:
         desc = DEFAULT_SEARCH_SPACE.to_prompt_description()
         assert isinstance(desc, str)
         assert len(desc) > 100
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_all_dimensions_appear_in_description(self) -> None:
         desc = DEFAULT_SEARCH_SPACE.to_prompt_description()
         for dim in _DIMS:
@@ -419,6 +453,7 @@ class TestToPromptDescription:
                 f"Dimension {dim.name} not in description"
             )
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_all_primitive_headers_in_description(self) -> None:
         desc = DEFAULT_SEARCH_SPACE.to_prompt_description()
         for primitive in (
@@ -429,12 +464,14 @@ class TestToPromptDescription:
                 f"Primitive header {primitive} not in description"
             )
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_constraints_in_description(self) -> None:
         desc = DEFAULT_SEARCH_SPACE.to_prompt_description()
         assert "## Constraints" in desc
         for constraint in DEFAULT_SEARCH_SPACE.constraints:
             assert constraint in desc
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_empty_space_renders(self) -> None:
         space = SearchSpace()
         desc = space.to_prompt_description()

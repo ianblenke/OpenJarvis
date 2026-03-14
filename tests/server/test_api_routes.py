@@ -15,6 +15,7 @@ def _make_app():
 
 
 class TestAgentRoutes:
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_list_agents(self):
         client = TestClient(_make_app())
         resp = client.get("/v1/agents")
@@ -23,12 +24,14 @@ class TestAgentRoutes:
         assert "registered" in data
         assert "running" in data
 
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_create_agent(self):
         client = TestClient(_make_app())
         resp = client.post("/v1/agents", json={"agent_type": "simple"})
         # May succeed or fail depending on agent_tools availability
         assert resp.status_code in (200, 501)
 
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_kill_nonexistent(self):
         client = TestClient(_make_app())
         resp = client.delete("/v1/agents/nonexistent")
@@ -36,12 +39,14 @@ class TestAgentRoutes:
 
 
 class TestMemoryRoutes:
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_search(self):
         client = TestClient(_make_app())
         resp = client.post("/v1/memory/search", json={"query": "test"})
         # May fail if SQLite not set up, that's ok
         assert resp.status_code in (200, 500)
 
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_stats(self):
         client = TestClient(_make_app())
         resp = client.get("/v1/memory/stats")
@@ -49,6 +54,7 @@ class TestMemoryRoutes:
 
 
 class TestBudgetRoutes:
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_get_budget(self):
         client = TestClient(_make_app())
         resp = client.get("/v1/budget")
@@ -57,6 +63,7 @@ class TestBudgetRoutes:
         assert "limits" in data
         assert "usage" in data
 
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_set_limits(self):
         client = TestClient(_make_app())
         resp = client.put("/v1/budget/limits", json={"max_tokens_per_day": 100000})
@@ -65,6 +72,7 @@ class TestBudgetRoutes:
 
 
 class TestMetricsRoute:
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_metrics_endpoint(self):
         client = TestClient(_make_app())
         resp = client.get("/metrics")
@@ -73,6 +81,7 @@ class TestMetricsRoute:
 
 
 class TestSkillRoutes:
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_list_skills(self):
         client = TestClient(_make_app())
         resp = client.get("/v1/skills")
@@ -81,6 +90,7 @@ class TestSkillRoutes:
 
 
 class TestSessionRoutes:
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_list_sessions(self):
         client = TestClient(_make_app())
         resp = client.get("/v1/sessions")
@@ -88,6 +98,7 @@ class TestSessionRoutes:
 
 
 class TestTraceRoutes:
+    @pytest.mark.spec("REQ-server.routes.chat")
     def test_list_traces(self):
         client = TestClient(_make_app())
         resp = client.get("/v1/traces")

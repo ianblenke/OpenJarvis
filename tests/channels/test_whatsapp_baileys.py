@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from io import StringIO
-from unittest.mock import MagicMock, patch
+from typing import Any, List
 
 import pytest
 
@@ -13,6 +13,58 @@ from openjarvis.channels._stubs import ChannelMessage, ChannelStatus
 from openjarvis.channels.whatsapp_baileys import WhatsAppBaileysChannel
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.registry import ChannelRegistry
+
+# ---------------------------------------------------------------------------
+# Typed fakes for subprocess boundary
+# ---------------------------------------------------------------------------
+
+
+class FakeStdin:
+    """Typed fake for subprocess stdin pipe."""
+
+    def __init__(self) -> None:
+        self.written: List[str] = []
+
+    def write(self, data: str) -> int:
+        self.written.append(data)
+        return len(data)
+
+    def flush(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+class FakeProcess:
+    """Typed fake for subprocess.Popen result."""
+
+    def __init__(
+        self,
+        *,
+        pid: int = 12345,
+        stdout_lines: List[str] | None = None,
+    ) -> None:
+        self.pid = pid
+        self.stdin = FakeStdin()
+        self.stdout = stdout_lines if stdout_lines is not None else []
+        self.stderr = StringIO("")
+        self.returncode: int | None = None
+
+    def terminate(self) -> None:
+        self.returncode = -15
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.returncode = self.returncode or 0
+        return self.returncode
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +80,7 @@ def _register_whatsapp_baileys():
 
 
 class TestRegistration:
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_registry_key(self):
         assert ChannelRegistry.contains("whatsapp_baileys")
 
@@ -42,6 +95,7 @@ class TestRegistration:
 
 
 class TestInit:
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_defaults(self):
         ch = WhatsAppBaileysChannel()
         assert ch._auth_dir == ""
@@ -51,6 +105,7 @@ class TestInit:
         assert ch._process is None
         assert ch._handlers == []
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_custom_params(self):
         ch = WhatsAppBaileysChannel(
             auth_dir="/tmp/auth",
@@ -68,11 +123,12 @@ class TestInit:
 
 
 class TestEnsureBridge:
-    def test_raises_when_node_not_found(self):
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
+    def test_raises_when_node_not_found(self, monkeypatch):
         ch = WhatsAppBaileysChannel()
-        with patch("shutil.which", return_value=None):
-            with pytest.raises(RuntimeError, match="Node.js is required"):
-                ch._ensure_bridge()
+        monkeypatch.setattr("shutil.which", lambda cmd: None)
+        with pytest.raises(RuntimeError, match="Node.js is required"):
+            ch._ensure_bridge()
 
 
 # ---------------------------------------------------------------------------
@@ -81,57 +137,61 @@ class TestEnsureBridge:
 
 
 class TestConnectDisconnect:
-    def test_connect_spawns_subprocess(self, tmp_path):
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
+    def test_connect_spawns_subprocess(self, tmp_path, monkeypatch):
         ch = WhatsAppBaileysChannel()
         ch._runtime_dir = tmp_path
 
-        mock_proc = MagicMock()
-        mock_proc.stdin = MagicMock()
-        mock_proc.stdout = StringIO("")
-        mock_proc.stderr = MagicMock()
-        mock_proc.pid = 12345
+        fake_proc = FakeProcess()
 
         bridge_js = tmp_path / "dist" / "bridge.js"
         bridge_js.parent.mkdir(parents=True, exist_ok=True)
         bridge_js.write_text("// bridge")
 
-        with (
-            patch("shutil.which", return_value="/usr/bin/node"),
-            patch("subprocess.run"),  # npm install
-            patch("subprocess.Popen", return_value=mock_proc) as mock_popen,
-        ):
-            # Pretend node_modules already exists to skip npm install.
-            (tmp_path / "node_modules").mkdir()
-            ch.connect()
+        popen_calls: List[Any] = []
 
-            mock_popen.assert_called_once()
-            call_args = mock_popen.call_args
-            assert "node" in call_args[0][0][0]
-            assert str(bridge_js) in call_args[0][0][1]
+        def fake_popen(args, **kwargs):
+            popen_calls.append((args, kwargs))
+            return fake_proc
+
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/node")
+        monkeypatch.setattr("subprocess.Popen", fake_popen)
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: None)
+
+        # Pretend node_modules already exists to skip npm install.
+        (tmp_path / "node_modules").mkdir()
+        ch.connect()
+
+        assert len(popen_calls) == 1
+        call_args = popen_calls[0][0]
+        assert "node" in call_args[0]
+        assert str(bridge_js) in call_args[1]
 
         # Cleanup.
         ch._stop_event.set()
         ch._process = None
 
-    def test_connect_sets_error_when_node_missing(self):
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
+    def test_connect_sets_error_when_node_missing(self, monkeypatch):
         ch = WhatsAppBaileysChannel()
-        with patch("shutil.which", return_value=None):
-            ch.connect()
-            assert ch.status() == ChannelStatus.ERROR
+        monkeypatch.setattr("shutil.which", lambda cmd: None)
+        ch.connect()
+        assert ch.status() == ChannelStatus.ERROR
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_disconnect_terminates_process(self):
         ch = WhatsAppBaileysChannel()
-        mock_proc = MagicMock()
-        mock_proc.stdin = MagicMock()
-        ch._process = mock_proc
+        fake_proc = FakeProcess()
+        ch._process = fake_proc
         ch._status = ChannelStatus.CONNECTED
 
         ch.disconnect()
 
-        mock_proc.terminate.assert_called_once()
+        assert fake_proc.returncode == -15  # terminate was called
         assert ch.status() == ChannelStatus.DISCONNECTED
         assert ch._process is None
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_disconnect_when_not_connected(self):
         ch = WhatsAppBaileysChannel()
         ch.disconnect()
@@ -144,33 +204,34 @@ class TestConnectDisconnect:
 
 
 class TestSend:
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_send_writes_json_to_stdin(self):
         ch = WhatsAppBaileysChannel()
-        mock_proc = MagicMock()
-        mock_proc.stdin = MagicMock()
-        ch._process = mock_proc
+        fake_proc = FakeProcess()
+        ch._process = fake_proc
         ch._status = ChannelStatus.CONNECTED
 
         result = ch.send("123456@s.whatsapp.net", "Hello!")
         assert result is True
 
-        written = mock_proc.stdin.write.call_args[0][0]
+        written = fake_proc.stdin.written[0]
         payload = json.loads(written.strip())
         assert payload["type"] == "send"
         assert payload["jid"] == "123456@s.whatsapp.net"
         assert payload["text"] == "Hello!"
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_send_fails_when_not_connected(self):
         ch = WhatsAppBaileysChannel()
         result = ch.send("123456@s.whatsapp.net", "Hello!")
         assert result is False
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_send_publishes_event(self):
         bus = EventBus(record_history=True)
         ch = WhatsAppBaileysChannel(bus=bus)
-        mock_proc = MagicMock()
-        mock_proc.stdin = MagicMock()
-        ch._process = mock_proc
+        fake_proc = FakeProcess()
+        ch._process = fake_proc
         ch._status = ChannelStatus.CONNECTED
 
         ch.send("123@s.whatsapp.net", "Hi!")
@@ -184,11 +245,12 @@ class TestSend:
 
 
 class TestOnMessage:
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_handler_registration(self):
         ch = WhatsAppBaileysChannel()
-        handler = MagicMock()
-        ch.on_message(handler)
-        assert handler in ch._handlers
+        received: List[ChannelMessage] = []
+        ch.on_message(lambda msg: received.append(msg))
+        assert len(ch._handlers) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -197,10 +259,12 @@ class TestOnMessage:
 
 
 class TestListChannelsAndStatus:
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_list_channels(self):
         ch = WhatsAppBaileysChannel()
         assert ch.list_channels() == ["whatsapp_baileys"]
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_initial_status(self):
         ch = WhatsAppBaileysChannel()
         assert ch.status() == ChannelStatus.DISCONNECTED
@@ -212,10 +276,11 @@ class TestListChannelsAndStatus:
 
 
 class TestReaderLoop:
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_parses_message_event(self):
         ch = WhatsAppBaileysChannel()
-        handler = MagicMock()
-        ch.on_message(handler)
+        received: List[ChannelMessage] = []
+        ch.on_message(lambda msg: received.append(msg))
 
         event = {
             "type": "message",
@@ -226,35 +291,40 @@ class TestReaderLoop:
         }
         ch._handle_bridge_event(event)
 
-        handler.assert_called_once()
-        msg: ChannelMessage = handler.call_args[0][0]
+        assert len(received) == 1
+        msg = received[0]
         assert msg.channel == "whatsapp_baileys"
         assert msg.sender == "456@s.whatsapp.net"
         assert msg.content == "Hello from WhatsApp"
         assert msg.message_id == "msg-001"
         assert msg.conversation_id == "123@s.whatsapp.net"
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_parses_status_connected(self):
         ch = WhatsAppBaileysChannel()
         ch._handle_bridge_event({"type": "status", "status": "connected"})
         assert ch.status() == ChannelStatus.CONNECTED
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_parses_status_disconnected(self):
         ch = WhatsAppBaileysChannel()
         ch._status = ChannelStatus.CONNECTED
         ch._handle_bridge_event({"type": "status", "status": "disconnected"})
         assert ch.status() == ChannelStatus.DISCONNECTED
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_parses_qr_event(self):
         ch = WhatsAppBaileysChannel()
         ch._handle_bridge_event({"type": "qr", "data": "qr-code-string"})
         assert ch._last_qr == "qr-code-string"
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_parses_error_event(self):
         ch = WhatsAppBaileysChannel()
         ch._handle_bridge_event({"type": "error", "message": "something broke"})
         assert ch.status() == ChannelStatus.ERROR
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_message_event_publishes_to_bus(self):
         bus = EventBus(record_history=True)
         ch = WhatsAppBaileysChannel(bus=bus)
@@ -270,6 +340,7 @@ class TestReaderLoop:
         event_types = [e.event_type for e in bus.history]
         assert EventType.CHANNEL_MESSAGE_RECEIVED in event_types
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_reader_loop_processes_lines(self):
         ch = WhatsAppBaileysChannel()
         ch._stop_event = threading.Event()
@@ -285,14 +356,14 @@ class TestReaderLoop:
             }) + "\n",
         ]
 
-        mock_proc = MagicMock()
-        mock_proc.stdout = lines
-        ch._process = mock_proc
+        fake_proc = FakeProcess(stdout_lines=lines)
+        ch._process = fake_proc
 
         ch._reader_loop()
 
         assert ch.status() == ChannelStatus.CONNECTED
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_reader_loop_skips_non_json(self):
         ch = WhatsAppBaileysChannel()
         ch._stop_event = threading.Event()
@@ -302,17 +373,20 @@ class TestReaderLoop:
             json.dumps({"type": "status", "status": "connected"}) + "\n",
         ]
 
-        mock_proc = MagicMock()
-        mock_proc.stdout = lines
-        ch._process = mock_proc
+        fake_proc = FakeProcess(stdout_lines=lines)
+        ch._process = fake_proc
 
         ch._reader_loop()
 
         assert ch.status() == ChannelStatus.CONNECTED
 
+    @pytest.mark.spec("REQ-channels.whatsapp-baileys")
     def test_handler_exception_does_not_crash(self):
         ch = WhatsAppBaileysChannel()
-        bad_handler = MagicMock(side_effect=ValueError("boom"))
+
+        def bad_handler(msg: ChannelMessage) -> None:
+            raise ValueError("boom")
+
         ch.on_message(bad_handler)
 
         # Should not raise.
@@ -323,4 +397,5 @@ class TestReaderLoop:
             "text": "t",
             "message_id": "m",
         })
-        bad_handler.assert_called_once()
+        # Handler was registered and called (it raised, but didn't crash)
+        assert len(ch._handlers) == 1

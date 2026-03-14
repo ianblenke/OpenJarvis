@@ -65,6 +65,7 @@ def _make_backend(key, tmp_path):
 class TestRetrievalQuality:
     """Retrieval quality assertions that should hold across backends."""
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_exact_keyword_match(self, backend_key, tmp_path):
         """Querying 'Python programming' should return the Python document."""
         backend = _make_backend(backend_key, tmp_path)
@@ -73,6 +74,7 @@ class TestRetrievalQuality:
         assert len(results) >= 1
         assert "Python" in results[0].content
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_semantic_similarity(self, backend_key, tmp_path):
         """Querying 'data analysis' should return the ML or Python document."""
         backend = _make_backend(backend_key, tmp_path)
@@ -83,6 +85,7 @@ class TestRetrievalQuality:
         data_results = [r for r in results if "data" in r.content.lower()]
         assert len(data_results) >= 1
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_no_match_returns_empty_or_low(self, backend_key, tmp_path):
         """Querying unrelated terms should return no results."""
         backend = _make_backend(backend_key, tmp_path)
@@ -91,6 +94,7 @@ class TestRetrievalQuality:
         # For keyword-based backends, unrelated queries return nothing
         assert len(results) == 0
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_ranking_order(self, backend_key, tmp_path):
         """Most relevant document should rank first."""
         backend = _make_backend(backend_key, tmp_path)
@@ -100,6 +104,7 @@ class TestRetrievalQuality:
         content = results[0].content.lower()
         assert "quantum" in content or "qubits" in content
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_top_k_limiting(self, backend_key, tmp_path):
         """top_k=1 should return at most 1 result."""
         backend = _make_backend(backend_key, tmp_path)
@@ -107,6 +112,7 @@ class TestRetrievalQuality:
         results = backend.retrieve("data", top_k=1)
         assert len(results) <= 1
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_source_preserved(self, backend_key, tmp_path):
         """Source file information should be preserved in retrieval results."""
         backend = _make_backend(backend_key, tmp_path)
@@ -115,6 +121,7 @@ class TestRetrievalQuality:
         assert len(results) >= 1
         assert results[0].source == "geo.md"
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_multiple_relevant_results(self, backend_key, tmp_path):
         """A broad query should return multiple matching documents."""
         backend = _make_backend(backend_key, tmp_path)
@@ -124,6 +131,7 @@ class TestRetrievalQuality:
         data_results = [r for r in results if "data" in r.content.lower()]
         assert len(data_results) >= 1
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_query_with_stopwords(self, backend_key, tmp_path):
         """Query containing common words should still match relevant docs."""
         backend = _make_backend(backend_key, tmp_path)
@@ -143,6 +151,7 @@ class TestRetrievalQuality:
 class TestSQLiteRetrievalSpecifics:
     """Tests specific to the SQLite FTS5 backend behavior."""
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_fts5_keyword_matching(self, tmp_path):
         backend = _make_sqlite(tmp_path)
         _build_corpus(backend)
@@ -151,6 +160,7 @@ class TestSQLiteRetrievalSpecifics:
         content = results[0].content.lower()
         assert "neural" in content or "brain" in content
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_fts5_partial_match(self, tmp_path):
         """FTS5 matches individual terms, not just full phrases."""
         backend = _make_sqlite(tmp_path)
@@ -159,6 +169,7 @@ class TestSQLiteRetrievalSpecifics:
         assert len(results) >= 1
         assert "programming" in results[0].content.lower()
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_score_nonzero_for_matches(self, tmp_path):
         backend = _make_sqlite(tmp_path)
         _build_corpus(backend)
@@ -167,18 +178,21 @@ class TestSQLiteRetrievalSpecifics:
         # FTS5 scores are converted to positive values
         assert results[0].score > 0
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_empty_query(self, tmp_path):
         backend = _make_sqlite(tmp_path)
         _build_corpus(backend)
         results = backend.retrieve("")
         assert results == []
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_whitespace_only_query(self, tmp_path):
         backend = _make_sqlite(tmp_path)
         _build_corpus(backend)
         results = backend.retrieve("   ")
         assert results == []
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_single_word_query(self, tmp_path):
         backend = _make_sqlite(tmp_path)
         _build_corpus(backend)
@@ -186,6 +200,7 @@ class TestSQLiteRetrievalSpecifics:
         assert len(results) >= 1
         assert "Python" in results[0].content
 
+    @pytest.mark.spec("REQ-storage.protocol.retrieve")
     def test_retrieve_all_corpus_with_broad_query(self, tmp_path):
         """A term that does not appear in the corpus returns empty."""
         backend = _make_sqlite(tmp_path)

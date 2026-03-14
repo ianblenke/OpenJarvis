@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 
 class TestErrorClassification:
+    @pytest.mark.spec("REQ-agents.executor.retry")
     def test_retryable_error(self):
         from openjarvis.agents.errors import RetryableError
 
@@ -11,12 +14,14 @@ class TestErrorClassification:
         assert err.retryable is True
         assert str(err) == "rate limit hit"
 
+    @pytest.mark.spec("REQ-agents.executor.retry")
     def test_fatal_error(self):
         from openjarvis.agents.errors import FatalError
 
         err = FatalError("invalid API key")
         assert err.retryable is False
 
+    @pytest.mark.spec("REQ-agents.executor.retry")
     def test_escalate_error(self):
         from openjarvis.agents.errors import EscalateError
 
@@ -24,30 +29,35 @@ class TestErrorClassification:
         assert err.retryable is False
         assert err.needs_human is True
 
+    @pytest.mark.spec("REQ-agents.executor.retry")
     def test_classify_rate_limit(self):
         from openjarvis.agents.errors import classify_error
 
         result = classify_error(Exception("rate limit exceeded"))
         assert result.retryable is True
 
+    @pytest.mark.spec("REQ-agents.executor.retry")
     def test_classify_timeout(self):
         from openjarvis.agents.errors import classify_error
 
         result = classify_error(TimeoutError("connection timed out"))
         assert result.retryable is True
 
+    @pytest.mark.spec("REQ-agents.executor.retry")
     def test_classify_permission(self):
         from openjarvis.agents.errors import classify_error
 
         result = classify_error(PermissionError("access denied"))
         assert result.retryable is False
 
+    @pytest.mark.spec("REQ-agents.executor.retry")
     def test_classify_unknown_defaults_retryable(self):
         from openjarvis.agents.errors import classify_error
 
         result = classify_error(ValueError("something weird"))
         assert result.retryable is True
 
+    @pytest.mark.spec("REQ-agents.executor.retry")
     def test_retry_delay_exponential(self):
         from openjarvis.agents.errors import retry_delay
 

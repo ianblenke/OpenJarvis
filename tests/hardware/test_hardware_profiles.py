@@ -3,8 +3,7 @@ and engine recommendation."""
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
+import openjarvis.core.config as _config_mod
 from openjarvis.core.config import (
     GpuInfo,
     _detect_amd_gpu,
@@ -14,6 +13,19 @@ from openjarvis.core.config import (
 )
 
 # ---------------------------------------------------------------------------
+# Helpers: side-effect sequencer for _run_cmd
+# ---------------------------------------------------------------------------
+
+
+def _make_run_cmd_seq(outputs: list[str]):
+    """Return a callable that yields successive *outputs* on each call."""
+    it = iter(outputs)
+    def _run_cmd(*args, **kwargs):
+        return next(it)
+    return _run_cmd
+
+
+# ---------------------------------------------------------------------------
 # Hardware detection
 # ---------------------------------------------------------------------------
 
@@ -21,12 +33,11 @@ from openjarvis.core.config import (
 class TestDetectHardware:
     """Tests for the top-level detect_hardware() function."""
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/nvidia-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        return_value="NVIDIA A100-SXM4-80GB, 81920, 1",
-    )
-    def test_detect_nvidia_gpu(self, mock_run, mock_which):
+    def test_detect_nvidia_gpu(self, monkeypatch):
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/nvidia-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd",
+                            lambda *a, **kw: "NVIDIA A100-SXM4-80GB, 81920, 1")
         gpu = _detect_nvidia_gpu()
         assert gpu is not None
         assert gpu.vendor == "nvidia"
@@ -34,42 +45,39 @@ class TestDetectHardware:
         assert gpu.vram_gb == 80.0
         assert gpu.count == 1
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/rocm-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        side_effect=[
-            "AMD Instinct MI300X",        # --showproductname
-            "GPU[0] : vram Total Memory (B): 206158430208",  # --showmeminfo vram
-            "GPU[0] : Some info",          # --showallinfo
-        ],
-    )
-    def test_detect_amd_gpu(self, mock_run, mock_which):
+    def test_detect_amd_gpu(self, monkeypatch):
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/rocm-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd", _make_run_cmd_seq([
+            "AMD Instinct MI300X",
+            "GPU[0] : vram Total Memory (B): 206158430208",
+            "GPU[0] : Some info",
+        ]))
         gpu = _detect_amd_gpu()
         assert gpu is not None
         assert gpu.vendor == "amd"
         assert "MI300X" in gpu.name
 
-    @patch("openjarvis.core.config.platform.system", return_value="Darwin")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        return_value=(
+    def test_detect_apple_silicon(self, monkeypatch):
+        monkeypatch.setattr("openjarvis.core.config.platform.system",
+                            lambda: "Darwin")
+        monkeypatch.setattr(_config_mod, "_run_cmd", lambda *a, **kw: (
             "Graphics/Displays:\n"
             "    Apple M4 Max:\n"
             "      Chipset Model: Apple M4 Max\n"
             "      Type: GPU\n"
             "      Bus: Built-In\n"
-        ),
-    )
-    def test_detect_apple_silicon(self, mock_run, mock_system):
+        ))
         gpu = _detect_apple_gpu()
         assert gpu is not None
         assert gpu.vendor == "apple"
         assert "M4 Max" in gpu.name
 
-    @patch("openjarvis.core.config.shutil.which", return_value=None)
-    @patch("openjarvis.core.config.platform.system", return_value="Linux")
-    def test_detect_no_gpu(self, mock_system, mock_which):
+    def test_detect_no_gpu(self, monkeypatch):
         """All GPU detection methods return None when no GPU is present."""
+        monkeypatch.setattr("openjarvis.core.config.shutil.which", lambda _n: None)
+        monkeypatch.setattr("openjarvis.core.config.platform.system",
+                            lambda: "Linux")
         assert _detect_nvidia_gpu() is None
         assert _detect_amd_gpu() is None
         assert _detect_apple_gpu() is None

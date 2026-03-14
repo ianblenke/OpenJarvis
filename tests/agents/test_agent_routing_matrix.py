@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from openjarvis.agents._stubs import AgentResult
@@ -12,22 +10,15 @@ from openjarvis.agents.native_react import NativeReActAgent
 from openjarvis.agents.orchestrator import OrchestratorAgent
 from openjarvis.agents.simple import SimpleAgent
 from openjarvis.core.events import EventBus, EventType
+from tests.fixtures.engines import FakeEngine
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_engine(response="Hello!"):
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.generate.return_value = {
-        "content": response,
-        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-        "model": "test-model",
-        "finish_reason": "stop",
-    }
-    return engine
+def _make_engine(response="Hello!"):
+    return FakeEngine(engine_id="mock", responses=[response])
 
 
 # ReAct needs a structured response to produce a result on first turn
@@ -61,17 +52,19 @@ _ALL_AGENTS = list(AGENT_RESPONSES)
 
 @pytest.mark.parametrize("agent_key", _ALL_AGENTS)
 class TestAgentCommon:
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_runs_with_mock_engine(self, agent_key):
         """Each agent type can run with a mock engine."""
-        engine = _make_mock_engine(AGENT_RESPONSES[agent_key])
+        engine = _make_engine(AGENT_RESPONSES[agent_key])
         bus = EventBus(record_history=True)
         agent = AGENT_FACTORIES[agent_key](engine, "test-model", bus)
         result = agent.run("Hello")
         assert isinstance(result, AgentResult)
 
+    @pytest.mark.spec("REQ-agents.result")
     def test_returns_valid_result(self, agent_key):
         """Result has correct structure."""
-        engine = _make_mock_engine(AGENT_RESPONSES[agent_key])
+        engine = _make_engine(AGENT_RESPONSES[agent_key])
         bus = EventBus(record_history=True)
         agent = AGENT_FACTORIES[agent_key](engine, "test-model", bus)
         result = agent.run("Hello")
@@ -80,26 +73,29 @@ class TestAgentCommon:
         assert hasattr(result, "tool_results")
         assert hasattr(result, "metadata")
 
+    @pytest.mark.spec("REQ-agents.result")
     def test_returns_nonempty_content(self, agent_key):
         """Result has non-empty content."""
-        engine = _make_mock_engine(AGENT_RESPONSES[agent_key])
+        engine = _make_engine(AGENT_RESPONSES[agent_key])
         bus = EventBus(record_history=True)
         agent = AGENT_FACTORIES[agent_key](engine, "test-model", bus)
         result = agent.run("Hello")
         assert result.content != ""
 
+    @pytest.mark.spec("REQ-agents.base.events")
     def test_emits_events(self, agent_key):
         """Each agent emits at least AGENT_TURN_START and inference events."""
-        engine = _make_mock_engine(AGENT_RESPONSES[agent_key])
+        engine = _make_engine(AGENT_RESPONSES[agent_key])
         bus = EventBus(record_history=True)
         agent = AGENT_FACTORIES[agent_key](engine, "test-model", bus)
         agent.run("Hello")
         event_types = [e.event_type for e in bus.history]
         assert EventType.AGENT_TURN_START in event_types
 
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_handles_empty_input(self, agent_key):
         """Agent handles empty string input without crashing."""
-        engine = _make_mock_engine(AGENT_RESPONSES[agent_key])
+        engine = _make_engine(AGENT_RESPONSES[agent_key])
         bus = EventBus(record_history=True)
         agent = AGENT_FACTORIES[agent_key](engine, "test-model", bus)
         result = agent.run("")
@@ -120,8 +116,9 @@ class TestAgentCommon:
         ("native_openhands", "native_openhands"),
     ],
 )
+@pytest.mark.spec("REQ-agents.base.registration")
 def test_agent_id(agent_key, expected_id):
-    engine = _make_mock_engine()
+    engine = _make_engine()
     agent = AGENT_FACTORIES[agent_key](engine, "test-model", None)
     assert agent.agent_id == expected_id
 
@@ -131,15 +128,16 @@ def test_agent_id(agent_key, expected_id):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-agents.base.protocol")
 @pytest.mark.parametrize("agent_key", _ALL_AGENTS)
 @pytest.mark.parametrize("model", ["qwen3:8b", "llama3:70b", "gpt-oss:120b"])
 def test_model_passthrough(agent_key, model):
     """Each agent passes the model name through to the engine."""
-    engine = _make_mock_engine(AGENT_RESPONSES[agent_key])
+    engine = _make_engine(AGENT_RESPONSES[agent_key])
     agent = AGENT_FACTORIES[agent_key](engine, model, None)
     agent.run("Hello")
-    call_kwargs = engine.generate.call_args[1]
-    assert call_kwargs["model"] == model
+    last_call = engine.call_history[-1]
+    assert last_call["model"] == model
 
 
 # ---------------------------------------------------------------------------
@@ -147,10 +145,11 @@ def test_model_passthrough(agent_key, model):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-agents.base.run")
 @pytest.mark.parametrize("agent_key", _ALL_AGENTS)
 def test_no_bus(agent_key):
     """All agents work without an event bus."""
-    engine = _make_mock_engine(AGENT_RESPONSES[agent_key])
+    engine = _make_engine(AGENT_RESPONSES[agent_key])
     agent = AGENT_FACTORIES[agent_key](engine, "test-model", None)
     result = agent.run("Hello")
     assert isinstance(result, AgentResult)
@@ -162,10 +161,11 @@ def test_no_bus(agent_key):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-agents.base.run")
 @pytest.mark.parametrize("agent_key", _ALL_AGENTS)
 def test_single_turn_count(agent_key):
     """All agents report at least 1 turn for a simple query."""
-    engine = _make_mock_engine(AGENT_RESPONSES[agent_key])
+    engine = _make_engine(AGENT_RESPONSES[agent_key])
     agent = AGENT_FACTORIES[agent_key](engine, "test-model", None)
     result = agent.run("Hello")
     assert result.turns >= 1
@@ -176,10 +176,11 @@ def test_single_turn_count(agent_key):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-agents.result")
 @pytest.mark.parametrize("agent_key", _ALL_AGENTS)
 def test_no_tool_results_for_simple_query(agent_key):
     """When no tools are used, tool_results should be empty."""
-    engine = _make_mock_engine(AGENT_RESPONSES[agent_key])
+    engine = _make_engine(AGENT_RESPONSES[agent_key])
     agent = AGENT_FACTORIES[agent_key](engine, "test-model", None)
     result = agent.run("Hello")
     assert result.tool_results == []

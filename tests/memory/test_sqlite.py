@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.registry import MemoryRegistry
 from openjarvis.tools.storage.sqlite import SQLiteMemory
@@ -17,12 +19,14 @@ def _make_backend(tmp_path: Path) -> SQLiteMemory:
     return SQLiteMemory(db_path=tmp_path / "test_memory.db")
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_registration_in_memory_registry():
     """Importing the module registers 'sqlite' in MemoryRegistry."""
     MemoryRegistry.register_value("sqlite", SQLiteMemory)
     assert MemoryRegistry.contains("sqlite")
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_creates_tables_on_init(tmp_path: Path):
     backend = _make_backend(tmp_path)
     # Rust manages the DB internally (_conn is None), so verify via public API:
@@ -31,6 +35,7 @@ def test_creates_tables_on_init(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_store_returns_uuid(tmp_path: Path):
     backend = _make_backend(tmp_path)
     doc_id = backend.store("hello world")
@@ -39,6 +44,7 @@ def test_store_returns_uuid(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_store_and_retrieve(tmp_path: Path):
     backend = _make_backend(tmp_path)
     backend.store("Python is a programming language", source="wiki.md")
@@ -49,6 +55,7 @@ def test_store_and_retrieve(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_retrieve_ranking_by_relevance(tmp_path: Path):
     backend = _make_backend(tmp_path)
     backend.store("machine learning and deep learning")
@@ -61,6 +68,7 @@ def test_retrieve_ranking_by_relevance(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_retrieve_top_k_limit(tmp_path: Path):
     backend = _make_backend(tmp_path)
     for i in range(10):
@@ -70,6 +78,7 @@ def test_retrieve_top_k_limit(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_retrieve_no_results(tmp_path: Path):
     backend = _make_backend(tmp_path)
     backend.store("hello world")
@@ -78,6 +87,7 @@ def test_retrieve_no_results(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_delete_existing(tmp_path: Path):
     backend = _make_backend(tmp_path)
     doc_id = backend.store("deletable content")
@@ -87,12 +97,14 @@ def test_delete_existing(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_delete_nonexistent(tmp_path: Path):
     backend = _make_backend(tmp_path)
     assert backend.delete("nonexistent_id") is False
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_clear(tmp_path: Path):
     backend = _make_backend(tmp_path)
     backend.store("doc one")
@@ -103,6 +115,7 @@ def test_clear(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_count(tmp_path: Path):
     backend = _make_backend(tmp_path)
     assert backend.count() == 0
@@ -113,6 +126,7 @@ def test_count(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_source_and_metadata_roundtrip(tmp_path: Path):
     backend = _make_backend(tmp_path)
     meta = {"author": "test", "page": 42}
@@ -129,6 +143,7 @@ def test_source_and_metadata_roundtrip(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_event_bus_integration_store(tmp_path: Path):
     bus = EventBus(record_history=True)
     backend = _make_backend(tmp_path)
@@ -149,6 +164,7 @@ def test_event_bus_integration_store(tmp_path: Path):
     backend.close()
 
 
+@pytest.mark.spec("REQ-storage.sqlite")
 def test_event_bus_integration_retrieve(tmp_path: Path):
     bus = EventBus(record_history=True)
     backend = _make_backend(tmp_path)

@@ -13,6 +13,7 @@ def _skip_if_no_cryptography():
 
 
 class TestSigning:
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_generate_keypair(self):
         _skip_if_no_cryptography()
         from openjarvis.security.signing import generate_keypair
@@ -20,6 +21,7 @@ class TestSigning:
         assert len(kp.private_key) == 32
         assert len(kp.public_key) == 32
 
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_sign_and_verify(self):
         _skip_if_no_cryptography()
         from openjarvis.security.signing import generate_keypair, sign, verify
@@ -29,6 +31,7 @@ class TestSigning:
         assert len(sig) == 64
         assert verify(data, sig, kp.public_key)
 
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_verify_wrong_data(self):
         _skip_if_no_cryptography()
         from openjarvis.security.signing import generate_keypair, sign, verify
@@ -36,6 +39,7 @@ class TestSigning:
         sig = sign(b"hello", kp.private_key)
         assert not verify(b"wrong", sig, kp.public_key)
 
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_verify_wrong_key(self):
         _skip_if_no_cryptography()
         from openjarvis.security.signing import generate_keypair, sign, verify
@@ -44,6 +48,7 @@ class TestSigning:
         sig = sign(b"data", kp1.private_key)
         assert not verify(b"data", sig, kp2.public_key)
 
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_sign_b64(self):
         _skip_if_no_cryptography()
         from openjarvis.security.signing import generate_keypair, sign_b64, verify_b64
@@ -53,12 +58,14 @@ class TestSigning:
         assert isinstance(sig_b64, str)
         assert verify_b64(data, sig_b64, kp.public_key)
 
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_verify_b64_invalid(self):
         _skip_if_no_cryptography()
         from openjarvis.security.signing import generate_keypair, verify_b64
         kp = generate_keypair()
         assert not verify_b64(b"data", "invalid-base64!!!", kp.public_key)
 
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_save_and_load_keypair(self, tmp_path):
         _skip_if_no_cryptography()
         from openjarvis.security.signing import (

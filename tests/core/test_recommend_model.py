@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.core.config import GpuInfo, HardwareInfo, recommend_model
 
 
 class TestRecommendModelGpu:
     """GPU-based model recommendation."""
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_24gb_gpu_picks_qwen35_35b(self) -> None:
         hw = HardwareInfo(
             platform="linux",
@@ -18,6 +21,7 @@ class TestRecommendModelGpu:
         # 35B * 0.5 * 1.1 = 19.25 GB; available = 24 * 0.9 = 21.6 → fits
         assert result == "qwen3.5:35b"
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_8gb_gpu_picks_qwen35_14b(self) -> None:
         hw = HardwareInfo(
             platform="linux",
@@ -29,6 +33,7 @@ class TestRecommendModelGpu:
         # 8B * 0.5 * 1.1 = 4.4 GB; available = 7.2 → fits
         assert result == "qwen3.5:8b"
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_4gb_gpu_picks_qwen35_4b(self) -> None:
         hw = HardwareInfo(
             platform="linux",
@@ -39,6 +44,7 @@ class TestRecommendModelGpu:
         # 4B * 0.5 * 1.1 = 2.2 GB; available = 4 * 0.9 = 3.6 → fits
         assert result == "qwen3.5:4b"
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_2gb_gpu_picks_qwen35_3b(self) -> None:
         hw = HardwareInfo(
             platform="linux",
@@ -49,6 +55,7 @@ class TestRecommendModelGpu:
         # 3B * 0.5 * 1.1 = 1.65 GB; available = 2 * 0.9 = 1.8 → fits
         assert result == "qwen3.5:3b"
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_multi_gpu_picks_larger_model(self) -> None:
         hw = HardwareInfo(
             platform="linux",
@@ -61,6 +68,7 @@ class TestRecommendModelGpu:
         # 122B * 0.5 * 1.1 = 67.1 → fits
         assert result == "qwen3.5:122b"
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_huge_vram_picks_397b(self) -> None:
         hw = HardwareInfo(
             platform="linux",
@@ -76,6 +84,7 @@ class TestRecommendModelGpu:
 class TestRecommendModelCpuOnly:
     """CPU-only model recommendation."""
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_cpu_only_16gb_ram(self) -> None:
         hw = HardwareInfo(platform="linux", ram_gb=16.0, gpu=None)
         result = recommend_model(hw, "llamacpp")
@@ -83,6 +92,7 @@ class TestRecommendModelCpuOnly:
         # 14B * 0.5 * 1.1 = 7.7 → fits
         assert result == "qwen3.5:14b"
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_cpu_only_8gb_ram(self) -> None:
         hw = HardwareInfo(platform="linux", ram_gb=8.0, gpu=None)
         result = recommend_model(hw, "llamacpp")
@@ -91,6 +101,7 @@ class TestRecommendModelCpuOnly:
         # 4B * 0.5 * 1.1 = 2.2 → fits
         assert result == "qwen3.5:4b"
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_cpu_only_4gb_ram(self) -> None:
         hw = HardwareInfo(platform="linux", ram_gb=4.0, gpu=None)
         result = recommend_model(hw, "llamacpp")
@@ -101,10 +112,12 @@ class TestRecommendModelCpuOnly:
 class TestRecommendModelEdgeCases:
     """Edge cases."""
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_no_ram_no_gpu(self) -> None:
         hw = HardwareInfo(platform="linux", ram_gb=0.0, gpu=None)
         assert recommend_model(hw, "ollama") == ""
 
+    @pytest.mark.spec("REQ-core.config.recommend-model")
     def test_engine_filter(self) -> None:
         """397b is not supported on ollama, only vllm/sglang."""
         hw = HardwareInfo(

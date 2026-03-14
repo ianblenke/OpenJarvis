@@ -5,9 +5,10 @@ from __future__ import annotations
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
+
+from tests.fixtures.optimizers import FakeExecutor
 
 
 @pytest.fixture
@@ -21,17 +22,19 @@ def manager():
 
 
 class TestSchedulerBasic:
+    @pytest.mark.spec("REQ-agents.executor.tick")
     def test_create_scheduler(self, manager):
         from openjarvis.agents.scheduler import AgentScheduler
 
-        executor = MagicMock()
+        executor = FakeExecutor()
         scheduler = AgentScheduler(manager=manager, executor=executor)
         assert scheduler is not None
 
+    @pytest.mark.spec("REQ-agents.executor.tick")
     def test_register_agent_with_interval(self, manager):
         from openjarvis.agents.scheduler import AgentScheduler
 
-        executor = MagicMock()
+        executor = FakeExecutor()
         scheduler = AgentScheduler(manager=manager, executor=executor)
 
         agent = manager.create_agent(
@@ -42,10 +45,11 @@ class TestSchedulerBasic:
         scheduler.register_agent(agent["id"])
         assert agent["id"] in scheduler.registered_agents
 
+    @pytest.mark.spec("REQ-agents.executor.tick")
     def test_register_agent_with_cron(self, manager):
         from openjarvis.agents.scheduler import AgentScheduler
 
-        executor = MagicMock()
+        executor = FakeExecutor()
         scheduler = AgentScheduler(manager=manager, executor=executor)
 
         agent = manager.create_agent(
@@ -56,10 +60,11 @@ class TestSchedulerBasic:
         scheduler.register_agent(agent["id"])
         assert agent["id"] in scheduler.registered_agents
 
+    @pytest.mark.spec("REQ-agents.executor.tick")
     def test_deregister_agent(self, manager):
         from openjarvis.agents.scheduler import AgentScheduler
 
-        executor = MagicMock()
+        executor = FakeExecutor()
         scheduler = AgentScheduler(manager=manager, executor=executor)
 
         agent = manager.create_agent(
@@ -71,10 +76,11 @@ class TestSchedulerBasic:
         scheduler.deregister_agent(agent["id"])
         assert agent["id"] not in scheduler.registered_agents
 
+    @pytest.mark.spec("REQ-agents.executor.tick")
     def test_manual_schedule_not_auto_registered(self, manager):
         from openjarvis.agents.scheduler import AgentScheduler
 
-        executor = MagicMock()
+        executor = FakeExecutor()
         scheduler = AgentScheduler(manager=manager, executor=executor)
 
         agent = manager.create_agent(
@@ -86,20 +92,22 @@ class TestSchedulerBasic:
         # Manual agents are registered but never auto-fired
         assert agent["id"] in scheduler.registered_agents
 
+    @pytest.mark.spec("REQ-agents.executor.tick")
     def test_start_stop(self, manager):
         from openjarvis.agents.scheduler import AgentScheduler
 
-        executor = MagicMock()
+        executor = FakeExecutor()
         scheduler = AgentScheduler(manager=manager, executor=executor)
         scheduler.start()
         assert scheduler.is_running
         scheduler.stop()
         assert not scheduler.is_running
 
+    @pytest.mark.spec("REQ-agents.executor.tick")
     def test_tick_fires_executor(self, manager):
         from openjarvis.agents.scheduler import AgentScheduler
 
-        executor = MagicMock()
+        executor = FakeExecutor()
         scheduler = AgentScheduler(
             manager=manager, executor=executor, tick_interval=0.1
         )
@@ -114,13 +122,14 @@ class TestSchedulerBasic:
         time.sleep(0.5)
         scheduler.stop()
 
-        assert executor.execute_tick.call_count >= 1
-        executor.execute_tick.assert_called_with(agent["id"])
+        assert executor.call_count >= 1
+        executor.assert_called_with(agent["id"])
 
+    @pytest.mark.spec("REQ-agents.executor.tick")
     def test_skips_paused_agents(self, manager):
         from openjarvis.agents.scheduler import AgentScheduler
 
-        executor = MagicMock()
+        executor = FakeExecutor()
         scheduler = AgentScheduler(
             manager=manager, executor=executor, tick_interval=0.1
         )
@@ -136,4 +145,4 @@ class TestSchedulerBasic:
         time.sleep(0.3)
         scheduler.stop()
 
-        executor.execute_tick.assert_not_called()
+        executor.assert_not_called()

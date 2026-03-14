@@ -21,6 +21,7 @@ def engine() -> OllamaEngine:
 
 
 class TestOllamaGenerate:
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_generate_returns_content(self, engine: OllamaEngine) -> None:
         with respx.mock:
             respx.post("http://testhost:11434/api/chat").mock(
@@ -42,6 +43,7 @@ class TestOllamaGenerate:
         assert result["usage"]["completion_tokens"] == 5
         assert result["usage"]["total_tokens"] == 15
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_generate_connection_error(self, engine: OllamaEngine) -> None:
         with respx.mock:
             respx.post("http://testhost:11434/api/chat").mock(
@@ -54,6 +56,7 @@ class TestOllamaGenerate:
 
 
 class TestOllamaListModels:
+    @pytest.mark.spec("REQ-engine.protocol.list-models")
     def test_list_models(self, engine: OllamaEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:11434/api/tags").mock(
@@ -67,6 +70,7 @@ class TestOllamaListModels:
 
 
 class TestOllamaHealth:
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_true(self, engine: OllamaEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:11434/api/tags").mock(
@@ -74,6 +78,7 @@ class TestOllamaHealth:
             )
             assert engine.health() is True
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_false(self, engine: OllamaEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:11434/api/tags").mock(
@@ -83,6 +88,7 @@ class TestOllamaHealth:
 
 
 class TestOllamaStream:
+    @pytest.mark.spec("REQ-engine.protocol.stream")
     @pytest.mark.asyncio
     async def test_stream_yields_content(self, engine: OllamaEngine) -> None:
         lines = [

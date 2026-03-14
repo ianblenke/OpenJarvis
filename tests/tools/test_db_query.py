@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
+
 from openjarvis.tools.db_query import DatabaseQueryTool
 
 
 class TestDatabaseQueryTool:
     """Tests for DatabaseQueryTool."""
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spec(self):
         tool = DatabaseQueryTool()
         assert tool.spec.name == "db_query"
@@ -18,12 +21,14 @@ class TestDatabaseQueryTool:
         assert "code:execute" in tool.spec.required_capabilities
         assert "query" in tool.spec.parameters["required"]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_no_query(self):
         tool = DatabaseQueryTool()
         result = tool.execute(query="")
         assert result.success is False
         assert "No query" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_simple_select_in_memory(self):
         """SELECT on in-memory database using a literal values query."""
         tool = DatabaseQueryTool()
@@ -37,6 +42,7 @@ class TestDatabaseQueryTool:
         assert result.metadata["row_count"] == 1
         assert result.metadata["column_names"] == ["value", "greeting"]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_read_only_blocks_insert(self):
         tool = DatabaseQueryTool()
         result = tool.execute(
@@ -46,6 +52,7 @@ class TestDatabaseQueryTool:
         lower = result.content.lower()
         assert "blocked" in lower or "read-only" in lower
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_read_only_blocks_delete(self):
         tool = DatabaseQueryTool()
         result = tool.execute(query="DELETE FROM users WHERE id=1")
@@ -53,6 +60,7 @@ class TestDatabaseQueryTool:
         lower = result.content.lower()
         assert "blocked" in lower or "read-only" in lower
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_read_only_blocks_drop(self):
         tool = DatabaseQueryTool()
         result = tool.execute(query="DROP TABLE users")
@@ -60,36 +68,43 @@ class TestDatabaseQueryTool:
         lower = result.content.lower()
         assert "blocked" in lower or "read-only" in lower
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_read_only_blocks_update(self):
         tool = DatabaseQueryTool()
         result = tool.execute(query="UPDATE users SET name='Bob' WHERE id=1")
         assert result.success is False
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_read_only_blocks_alter(self):
         tool = DatabaseQueryTool()
         result = tool.execute(query="ALTER TABLE users ADD COLUMN age INTEGER")
         assert result.success is False
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_read_only_blocks_create(self):
         tool = DatabaseQueryTool()
         result = tool.execute(query="CREATE TABLE evil (id INTEGER)")
         assert result.success is False
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_read_only_blocks_truncate(self):
         tool = DatabaseQueryTool()
         result = tool.execute(query="TRUNCATE TABLE users")
         assert result.success is False
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_pragma_allowed(self):
         tool = DatabaseQueryTool()
         result = tool.execute(query="PRAGMA table_info('sqlite_master')")
         assert result.success is True
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_explain_allowed(self):
         tool = DatabaseQueryTool()
         result = tool.execute(query="EXPLAIN SELECT 1")
         assert result.success is True
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_max_rows_limit(self, tmp_path):
         """Create a table with many rows and verify max_rows is honored."""
         db_file = tmp_path / "test.db"
@@ -110,6 +125,7 @@ class TestDatabaseQueryTool:
         assert result.success is True
         assert result.metadata["row_count"] == 10
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_db_path_to_file(self, tmp_path):
         """Test querying a real SQLite file."""
         db_file = tmp_path / "mydata.db"
@@ -132,6 +148,7 @@ class TestDatabaseQueryTool:
         assert result.metadata["column_names"] == ["id", "name"]
         assert result.metadata["db_type"] == "sqlite"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_blocks_sensitive_db_paths(self, tmp_path):
         """Sensitive file patterns (e.g. .env) should be blocked."""
         f = tmp_path / ".env"
@@ -145,6 +162,7 @@ class TestDatabaseQueryTool:
         assert result.success is False
         assert "sensitive" in result.content.lower()
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_blocks_pem_db_path(self, tmp_path):
         """Sensitive file patterns (.pem) should be blocked."""
         f = tmp_path / "server.pem"
@@ -158,6 +176,7 @@ class TestDatabaseQueryTool:
         assert result.success is False
         assert "sensitive" in result.content.lower()
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_with_select_allowed(self):
         """WITH ... SELECT (CTE) should be allowed in read-only mode."""
         tool = DatabaseQueryTool()
@@ -168,6 +187,7 @@ class TestDatabaseQueryTool:
         assert "x" in result.content
         assert "1" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_with_insert_blocked(self):
         """WITH ... INSERT should be blocked in read-only mode."""
         tool = DatabaseQueryTool()
@@ -176,6 +196,7 @@ class TestDatabaseQueryTool:
         )
         assert result.success is False
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_format_output_has_column_headers(self):
         """Verify pipe-delimited table format with column headers."""
         tool = DatabaseQueryTool()
@@ -193,6 +214,7 @@ class TestDatabaseQueryTool:
         assert "42" in lines[2]
         assert "test" in lines[2]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_postgresql_url_without_psycopg2_gives_helpful_error(self):
         """When db_url is provided but psycopg2 is not installed,
         the tool should return a helpful error message."""
@@ -207,6 +229,7 @@ class TestDatabaseQueryTool:
         assert "psycopg2" in result.content
         assert "pip install" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_read_only_false_allows_write(self, tmp_path):
         """When read_only=False, write queries should be allowed."""
         db_file = tmp_path / "writable.db"
@@ -231,6 +254,7 @@ class TestDatabaseQueryTool:
         assert result2.success is True
         assert "42" in result2.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_sql_error_returns_failure(self):
         """Invalid SQL should return a failure result, not raise."""
         tool = DatabaseQueryTool()
@@ -238,6 +262,7 @@ class TestDatabaseQueryTool:
         assert result.success is False
         assert "error" in result.content.lower()
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_nonexistent_db_file(self):
         """Opening a non-existent file in read-only mode should fail."""
         tool = DatabaseQueryTool()
@@ -248,10 +273,12 @@ class TestDatabaseQueryTool:
         )
         assert result.success is False
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_tool_id(self):
         tool = DatabaseQueryTool()
         assert tool.tool_id == "db_query"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_openai_function_format(self):
         tool = DatabaseQueryTool()
         fn = tool.to_openai_function()
@@ -262,6 +289,7 @@ class TestDatabaseQueryTool:
         assert "read_only" in fn["function"]["parameters"]["properties"]
         assert "max_rows" in fn["function"]["parameters"]["properties"]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_multiple_columns_alignment(self, tmp_path):
         """Verify the pipe-delimited format aligns columns properly."""
         db_file = tmp_path / "align.db"

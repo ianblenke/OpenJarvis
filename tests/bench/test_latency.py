@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from openjarvis.bench.latency import LatencyBenchmark
 from openjarvis.core.registry import BenchmarkRegistry
+from tests.fixtures.engines import FakeEngine
 
 
 @pytest.fixture(autouse=True)
@@ -18,14 +17,30 @@ def _register_latency():
     ensure_registered()
 
 
-def _make_engine():
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.generate.return_value = {
-        "content": "Hello",
-        "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
-    }
-    return engine
+class _CountingEngine:
+    """Thin wrapper that counts generate() calls and supports error injection."""
+
+    def __init__(self):
+        self._inner = FakeEngine(engine_id="mock", responses=["Hello"])
+        self.engine_id = self._inner.engine_id
+        self._call_count = 0
+        self._side_effect = None
+
+    def generate(self, messages, *, model, **kwargs):
+        self._call_count += 1
+        if self._side_effect is not None:
+            raise self._side_effect
+        result = self._inner.generate(messages, model=model, **kwargs)
+        result["usage"] = {
+            "prompt_tokens": 5,
+            "completion_tokens": 3,
+            "total_tokens": 8,
+        }
+        return result
+
+    @property
+    def call_count(self):
+        return self._call_count
 
 
 class TestLatencyBenchmark:
@@ -41,8 +56,8 @@ class TestLatencyBenchmark:
         b = LatencyBenchmark()
         assert "latency" in b.description.lower()
 
-    def test_run_with_mock_engine(self):
-        engine = _make_engine()
+    def test_run_with_fake_engine(self):
+        engine = _CountingEngine()
         b = LatencyBenchmark()
         result = b.run(engine, "test-model", num_samples=3)
         assert result.benchmark_name == "latency"
@@ -52,7 +67,7 @@ class TestLatencyBenchmark:
         assert result.errors == 0
 
     def test_metrics_keys(self):
-        engine = _make_engine()
+        engine = _CountingEngine()
         b = LatencyBenchmark()
         result = b.run(engine, "test-model", num_samples=3)
         expected_keys = {
@@ -62,14 +77,14 @@ class TestLatencyBenchmark:
         assert set(result.metrics.keys()) == expected_keys
 
     def test_sample_count(self):
-        engine = _make_engine()
+        engine = _CountingEngine()
         b = LatencyBenchmark()
         b.run(engine, "test-model", num_samples=5)
-        assert engine.generate.call_count == 5
+        assert engine.call_count == 5
 
     def test_run_with_errors(self):
-        engine = _make_engine()
-        engine.generate.side_effect = RuntimeError("fail")
+        engine = _CountingEngine()
+        engine._side_effect = RuntimeError("fail")
         b = LatencyBenchmark()
         result = b.run(engine, "test-model", num_samples=3)
         assert result.errors == 3

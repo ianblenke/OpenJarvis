@@ -2,50 +2,51 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from typing import Any, Dict
 
 import pytest
 
+import openjarvis.sdk as _sdk_mod
 from openjarvis.core.config import JarvisConfig
 from openjarvis.sdk import Jarvis, MemoryHandle
+from tests.fixtures.engines import FakeEngine
 
 
 def _make_engine(content="Hello from SDK"):
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.health.return_value = True
-    engine.list_models.return_value = ["test-model"]
-    engine.generate.return_value = {
-        "content": content,
-        "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
-        "model": "test-model",
-        "finish_reason": "stop",
-    }
-    return engine
+    return FakeEngine(
+        engine_id="mock",
+        responses=[content],
+        models=["test-model"],
+    )
 
 
 class TestJarvisInit:
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_default_config(self):
         j = Jarvis(config=JarvisConfig())
         assert j.config is not None
         j.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_custom_config(self):
         cfg = JarvisConfig()
         j = Jarvis(config=cfg)
         assert j.config is cfg
         j.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_version_property(self):
         j = Jarvis(config=JarvisConfig())
         assert j.version == "0.1.0"
         j.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_engine_key_override(self):
         j = Jarvis(config=JarvisConfig(), engine_key="custom")
         assert j._engine_key == "custom"
         j.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_model_override(self):
         j = Jarvis(config=JarvisConfig(), model="my-model")
         assert j._model_override == "my-model"
@@ -53,25 +54,26 @@ class TestJarvisInit:
 
 
 class TestJarvisAsk:
-    def test_ask_returns_string(self):
+    @pytest.mark.spec("REQ-engine.protocol.generate")
+    def test_ask_returns_string(self, monkeypatch):
         engine = _make_engine("The answer is 42.")
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=JarvisConfig(), model="test-model")
-            result = j.ask("What is the answer?")
-            assert result == "The answer is 42."
-            j.close()
+        monkeypatch.setattr(_sdk_mod, "get_engine", lambda *a, **kw: ("mock", engine))
+        j = Jarvis(config=JarvisConfig(), model="test-model")
+        result = j.ask("What is the answer?")
+        assert result == "The answer is 42."
+        j.close()
 
-    def test_ask_with_model_override(self):
+    @pytest.mark.spec("REQ-engine.protocol.generate")
+    def test_ask_with_model_override(self, monkeypatch):
         engine = _make_engine()
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=JarvisConfig())
-            j.ask("Hello", model="custom-model")
-            # Verify engine.generate was called with the custom model
-            call_kwargs = engine.generate.call_args
-            assert call_kwargs[1]["model"] == "custom-model"
-            j.close()
+        monkeypatch.setattr(_sdk_mod, "get_engine", lambda *a, **kw: ("mock", engine))
+        j = Jarvis(config=JarvisConfig())
+        j.ask("Hello", model="custom-model")
+        assert engine.call_history[-1]["model"] == "custom-model"
+        j.close()
 
-    def test_ask_with_agent(self):
+    @pytest.mark.spec("REQ-engine.protocol.generate")
+    def test_ask_with_agent(self, monkeypatch):
         from openjarvis.agents._stubs import AgentResult
         from openjarvis.core.registry import AgentRegistry
 
@@ -88,40 +90,44 @@ class TestJarvisAsk:
 
         AgentRegistry.register_value("mock-agent", MockAgent)
 
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=JarvisConfig(), model="test-model")
-            result = j.ask("Hello", agent="mock-agent")
-            assert result == "Agent response"
-            j.close()
+        monkeypatch.setattr(_sdk_mod, "get_engine", lambda *a, **kw: ("mock", engine))
+        j = Jarvis(config=JarvisConfig(), model="test-model")
+        result = j.ask("Hello", agent="mock-agent")
+        assert result == "Agent response"
+        j.close()
 
-    def test_ask_no_engine_raises(self):
-        with patch("openjarvis.sdk.get_engine", return_value=None):
-            j = Jarvis(config=JarvisConfig())
-            with pytest.raises(RuntimeError, match="No inference engine"):
-                j.ask("Hello")
-            j.close()
+    @pytest.mark.spec("REQ-engine.protocol.generate")
+    def test_ask_no_engine_raises(self, monkeypatch):
+        monkeypatch.setattr(_sdk_mod, "get_engine", lambda *a, **kw: None)
+        j = Jarvis(config=JarvisConfig())
+        with pytest.raises(RuntimeError, match="No inference engine"):
+            j.ask("Hello")
+        j.close()
 
-    def test_ask_full_returns_dict(self):
+    @pytest.mark.spec("REQ-engine.protocol.generate")
+    def test_ask_full_returns_dict(self, monkeypatch):
         engine = _make_engine("Full response")
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=JarvisConfig(), model="test-model")
-            result = j.ask_full("Hello")
-            assert isinstance(result, dict)
-            assert "content" in result
-            assert "usage" in result
-            assert result["content"] == "Full response"
-            j.close()
+        monkeypatch.setattr(_sdk_mod, "get_engine", lambda *a, **kw: ("mock", engine))
+        j = Jarvis(config=JarvisConfig(), model="test-model")
+        result = j.ask_full("Hello")
+        assert isinstance(result, dict)
+        assert "content" in result
+        assert "usage" in result
+        assert result["content"] == "Full response"
+        j.close()
 
 
 class TestJarvisModels:
-    def test_list_models(self):
+    @pytest.mark.spec("REQ-engine.protocol.generate")
+    def test_list_models(self, monkeypatch):
         engine = _make_engine()
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=JarvisConfig())
-            models = j.list_models()
-            assert models == ["test-model"]
-            j.close()
+        monkeypatch.setattr(_sdk_mod, "get_engine", lambda *a, **kw: ("mock", engine))
+        j = Jarvis(config=JarvisConfig())
+        models = j.list_models()
+        assert models == ["test-model"]
+        j.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_list_engines(self):
         from openjarvis.core.registry import EngineRegistry
 
@@ -131,6 +137,7 @@ class TestJarvisModels:
         assert "test-eng" in engines
         j.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_list_engines_empty(self):
         j = Jarvis(config=JarvisConfig())
         engines = j.list_engines()
@@ -139,74 +146,97 @@ class TestJarvisModels:
 
 
 class TestMemoryHandle:
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_lazy_backend_init(self):
         cfg = JarvisConfig()
         handle = MemoryHandle(cfg)
         assert handle._backend is None
         handle.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_close_idempotent(self):
         cfg = JarvisConfig()
         handle = MemoryHandle(cfg)
         handle.close()
         handle.close()  # should not raise
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_index_file(self, tmp_path):
         # Create a test file with enough content to produce chunks
         test_file = tmp_path / "test.txt"
         words = " ".join(f"word{i}" for i in range(100))
         test_file.write_text(words)
 
-        # Mock the memory backend
-        mock_backend = MagicMock()
-        mock_backend.store.return_value = "doc-1"
+        class _FakeMemoryBackend:
+            store_count = 0
+            def store(self, content, **kwargs):
+                self.store_count += 1
+                return f"doc-{self.store_count}"
+            def retrieve(self, query, **kwargs):
+                return []
+            def count(self):
+                return self.store_count
 
+        backend = _FakeMemoryBackend()
         cfg = JarvisConfig()
         handle = MemoryHandle(cfg)
-        handle._backend = mock_backend
+        handle._backend = backend
 
         result = handle.index(str(test_file))
         assert result["chunks"] > 0
         assert "doc_ids" in result
         handle.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_search_returns_results(self):
-        mock_backend = MagicMock()
-        mock_result = MagicMock()
-        mock_result.content = "test content"
-        mock_result.score = 0.9
-        mock_result.source = "test.txt"
-        mock_result.metadata = {}
-        mock_backend.retrieve.return_value = [mock_result]
+        class _FakeSearchResult:
+            content = "test content"
+            score = 0.9
+            source = "test.txt"
+            metadata: Dict[str, Any] = {}
+
+        class _FakeMemoryBackend:
+            def retrieve(self, query, **kwargs):
+                return [_FakeSearchResult()]
+            def count(self):
+                return 1
 
         cfg = JarvisConfig()
         handle = MemoryHandle(cfg)
-        handle._backend = mock_backend
+        handle._backend = _FakeMemoryBackend()
 
         results = handle.search("test query")
         assert len(results) == 1
         assert results[0]["content"] == "test content"
         handle.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_search_empty(self):
-        mock_backend = MagicMock()
-        mock_backend.retrieve.return_value = []
+        class _FakeMemoryBackend:
+            def retrieve(self, query, **kwargs):
+                return []
+            def count(self):
+                return 0
 
         cfg = JarvisConfig()
         handle = MemoryHandle(cfg)
-        handle._backend = mock_backend
+        handle._backend = _FakeMemoryBackend()
 
         results = handle.search("nothing")
         assert results == []
         handle.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_stats_returns_dict(self):
-        mock_backend = MagicMock()
-        mock_backend.count.return_value = 5
+        class _FakeMemoryBackend:
+            def count(self):
+                return 5
+            def retrieve(self, query, **kwargs):
+                return []
 
         cfg = JarvisConfig()
         handle = MemoryHandle(cfg)
-        handle._backend = mock_backend
+        handle._backend = _FakeMemoryBackend()
 
         stats = handle.stats()
         assert isinstance(stats, dict)
@@ -216,80 +246,82 @@ class TestMemoryHandle:
 
 class TestJarvisStreaming:
     @pytest.mark.asyncio
-    async def test_ask_stream_yields_tokens(self):
+    async def test_ask_stream_yields_tokens(self, monkeypatch):
         engine = _make_engine()
 
-        async def mock_stream(*args, **kwargs):
+        async def fake_stream(*args, **kwargs):
             for token in ["Hello", " ", "world"]:
                 yield token
 
-        engine.stream = mock_stream
+        engine.stream = fake_stream
 
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=JarvisConfig(), model="test-model")
-            tokens = []
-            async for token in j.ask_stream("Hi"):
-                tokens.append(token)
-            assert tokens == ["Hello", " ", "world"]
-            j.close()
+        monkeypatch.setattr(_sdk_mod, "get_engine", lambda *a, **kw: ("mock", engine))
+        j = Jarvis(config=JarvisConfig(), model="test-model")
+        tokens = []
+        async for token in j.ask_stream("Hi"):
+            tokens.append(token)
+        assert tokens == ["Hello", " ", "world"]
+        j.close()
 
     @pytest.mark.asyncio
-    async def test_ask_full_stream_yields_dicts(self):
+    async def test_ask_full_stream_yields_dicts(self, monkeypatch):
         engine = _make_engine()
 
-        async def mock_stream(*args, **kwargs):
+        async def fake_stream(*args, **kwargs):
             for token in ["Hello", " ", "world"]:
                 yield token
 
-        engine.stream = mock_stream
+        engine.stream = fake_stream
 
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=JarvisConfig(), model="test-model")
-            chunks = []
-            async for chunk in j.ask_full_stream("Hi"):
-                chunks.append(chunk)
+        monkeypatch.setattr(_sdk_mod, "get_engine", lambda *a, **kw: ("mock", engine))
+        j = Jarvis(config=JarvisConfig(), model="test-model")
+        chunks = []
+        async for chunk in j.ask_full_stream("Hi"):
+            chunks.append(chunk)
 
-            # First three chunks are token dicts
-            assert chunks[0] == {"token": "Hello", "index": 0}
-            assert chunks[1] == {"token": " ", "index": 1}
-            assert chunks[2] == {"token": "world", "index": 2}
+        # First three chunks are token dicts
+        assert chunks[0] == {"token": "Hello", "index": 0}
+        assert chunks[1] == {"token": " ", "index": 1}
+        assert chunks[2] == {"token": "world", "index": 2}
 
-            # Final chunk has done flag and full content
-            final = chunks[-1]
-            assert final["done"] is True
-            assert final["content"] == "Hello world"
-            assert final["model"] == "test-model"
-            assert final["engine"] == "mock"
-            j.close()
+        # Final chunk has done flag and full content
+        final = chunks[-1]
+        assert final["done"] is True
+        assert final["content"] == "Hello world"
+        assert final["model"] == "test-model"
+        assert final["engine"] == "mock"
+        j.close()
 
     @pytest.mark.asyncio
-    async def test_ask_stream_with_model_override(self):
+    async def test_ask_stream_with_model_override(self, monkeypatch):
         engine = _make_engine()
         call_log: list = []
 
-        async def mock_stream(*args, **kwargs):
+        async def fake_stream(*args, **kwargs):
             call_log.append(kwargs)
             for token in ["ok"]:
                 yield token
 
-        engine.stream = mock_stream
+        engine.stream = fake_stream
 
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=JarvisConfig())
-            tokens = []
-            async for token in j.ask_stream("Hi", model="custom-model"):
-                tokens.append(token)
-            assert tokens == ["ok"]
-            assert call_log[0]["model"] == "custom-model"
-            j.close()
+        monkeypatch.setattr(_sdk_mod, "get_engine", lambda *a, **kw: ("mock", engine))
+        j = Jarvis(config=JarvisConfig())
+        tokens = []
+        async for token in j.ask_stream("Hi", model="custom-model"):
+            tokens.append(token)
+        assert tokens == ["ok"]
+        assert call_log[0]["model"] == "custom-model"
+        j.close()
 
 
 class TestJarvisLifecycle:
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_close_releases_resources(self):
         j = Jarvis(config=JarvisConfig())
         j.close()
         assert j._engine is None
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_double_close_safe(self):
         j = Jarvis(config=JarvisConfig())
         j.close()

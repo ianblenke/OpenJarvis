@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
+from tests.fixtures.engines import FakeEngine
 
 from openjarvis.agents._stubs import AgentContext, AgentResult
 from openjarvis.core.events import EventBus, EventType
@@ -43,16 +42,17 @@ def _register_all():
 
 
 def _make_engine(responses):
-    """Create a mock engine returning a sequence of responses."""
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.health.return_value = True
-    engine.list_models.return_value = ["test-model"]
+    """Create a FakeEngine returning a sequence of responses."""
     if isinstance(responses, list):
-        engine.generate.side_effect = responses
+        contents = [r["content"] for r in responses]
     else:
-        engine.generate.return_value = responses
-    return engine
+        contents = [responses["content"]]
+    return FakeEngine(
+        engine_id="mock",
+        responses=contents,
+        models=["test-model"],
+        healthy=True,
+    )
 
 
 def _simple_response(content, model="test-model"):
@@ -76,6 +76,7 @@ def _simple_response(content, model="test-model"):
 class TestReActPipeline:
     """End-to-end: ReAct agent with calculator tool."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_react_with_calculator_e2e(self):
         _register_all()
         from openjarvis.agents.native_react import NativeReActAgent
@@ -106,6 +107,7 @@ class TestReActPipeline:
         assert len(result.tool_results) == 1
         assert result.tool_results[0].content == "4.0"
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_react_with_think_tool(self):
         _register_all()
         from openjarvis.agents.native_react import NativeReActAgent
@@ -130,6 +132,7 @@ class TestReActPipeline:
         assert result.turns == 2
         assert result.tool_results[0].success is True
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_react_direct_answer(self):
         """ReAct returns immediately when no tool use is needed."""
         _register_all()
@@ -146,6 +149,7 @@ class TestReActPipeline:
         assert result.content == "Hello!"
         assert result.turns == 1
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_react_event_chain(self):
         """Verify agent-level event chain through ReAct run.
 
@@ -179,6 +183,7 @@ class TestReActPipeline:
 class TestOpenHandsPipeline:
     """End-to-end: OpenHands agent with code execution."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_openhands_code_execution_e2e(self):
         _register_all()
         from openjarvis.agents.native_openhands import NativeOpenHandsAgent
@@ -211,6 +216,7 @@ class TestOpenHandsPipeline:
         # The code_interpreter actually runs print(2+2)
         assert "4" in result.tool_results[0].content
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_openhands_direct_answer(self):
         """OpenHands returns directly when no code is needed."""
         _register_all()
@@ -224,6 +230,7 @@ class TestOpenHandsPipeline:
         assert result.content == "Hello! How can I help?"
         assert result.turns == 1
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_openhands_event_chain(self):
         """Verify event chain through OpenHands run."""
         _register_all()
@@ -251,6 +258,7 @@ class TestOpenHandsPipeline:
 class TestMCPIntegration:
     """MCP server + client with real tools."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_mcp_server_with_all_tools(self):
         from openjarvis.mcp.client import MCPClient
         from openjarvis.mcp.server import MCPServer
@@ -288,6 +296,7 @@ class TestMCPIntegration:
 
         client.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_mcp_unknown_tool_error(self):
         from openjarvis.mcp.client import MCPClient
         from openjarvis.mcp.protocol import MCPError
@@ -304,6 +313,7 @@ class TestMCPIntegration:
 
         client.close()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_mcp_roundtrip_lifecycle(self):
         """Full lifecycle: init -> list -> call -> result."""
         from openjarvis.mcp.client import MCPClient
@@ -341,6 +351,7 @@ class TestMCPIntegration:
 class TestCrossEngineConsistency:
     """Same query through different mock engine configs."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_same_query_same_format(self):
         """All engines return the same result dict shape."""
         _register_all()
@@ -359,6 +370,7 @@ class TestCrossEngineConsistency:
             assert isinstance(result, AgentResult)
             assert result.content == "Result"
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_tool_calls_across_engines(self):
         """Tool calling works regardless of engine mock."""
         _register_all()
@@ -398,6 +410,7 @@ class TestCrossEngineConsistency:
 class TestMemoryPipeline:
     """Index and retrieve across available backends."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_sqlite_index_and_retrieve(self, tmp_path):
         from openjarvis.tools.storage.sqlite import SQLiteMemory
 
@@ -414,6 +427,7 @@ class TestMemoryPipeline:
         assert len(results) >= 1
         assert "machine" in results[0].content.lower()
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_bm25_index_and_retrieve(self, tmp_path):
         try:
             from openjarvis.tools.storage.bm25 import BM25Memory
@@ -435,6 +449,7 @@ class TestMemoryPipeline:
 class TestModelCatalogIntegration:
     """All registered models have valid metadata."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_all_models_routable(self):
         """Every model in catalog has required fields."""
         from openjarvis.intelligence.model_catalog import (
@@ -447,6 +462,7 @@ class TestModelCatalogIntegration:
             if spec.requires_api_key:
                 assert spec.provider
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_local_models_have_engine_compat(self):
         """Every local model has at least one engine."""
         from openjarvis.intelligence.model_catalog import (
@@ -461,6 +477,7 @@ class TestModelCatalogIntegration:
                 f"{spec.model_id} has no engines"
             )
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_cloud_models_require_api_key(self):
         """All cloud models require an API key."""
         from openjarvis.intelligence.model_catalog import (
@@ -496,6 +513,7 @@ class TestAgentRoutingMatrix:
     @pytest.mark.parametrize(
         "agent_key", ["native_react", "native_openhands"],
     )
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_agent_returns_valid_result(self, agent_key):
         _register_all()
 
@@ -517,6 +535,7 @@ class TestAgentRoutingMatrix:
     @pytest.mark.parametrize(
         "agent_key", ["native_react", "native_openhands"],
     )
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_agent_emits_events(self, agent_key):
         _register_all()
 
@@ -536,6 +555,7 @@ class TestAgentRoutingMatrix:
         assert EventType.AGENT_TURN_START in types
         assert EventType.AGENT_TURN_END in types
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_context_passing(self):
         """Agents accept and use AgentContext."""
         _register_all()
@@ -558,8 +578,8 @@ class TestAgentRoutingMatrix:
         assert result.content == "Got context."
 
         # Verify engine received system message
-        call_args = engine.generate.call_args
-        msgs = call_args[0][0]
+        last_call = engine.call_history[-1]
+        msgs = last_call["messages"]
         # First message is ReAct system prompt, then context
         assert any(
             m.content == "You are helpful." for m in msgs

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from typing import Any, Dict, List
 
 import pytest
 
@@ -10,15 +10,40 @@ from openjarvis.agents._stubs import BaseAgent
 from openjarvis.agents.openhands import OpenHandsAgent
 from openjarvis.core.registry import AgentRegistry
 
+# ---------------------------------------------------------------------------
+# Typed fake (replacing MagicMock)
+# ---------------------------------------------------------------------------
+
+
+class _FakeEngine:
+    """Typed fake engine for OpenHands agent tests."""
+
+    def __init__(self) -> None:
+        self.engine_id = "mock"
+
+    def health(self) -> bool:
+        return True
+
+    def list_models(self) -> List[str]:
+        return ["test-model"]
+
+    def generate(self, messages, **kwargs) -> Dict[str, Any]:
+        return {
+            "content": "ok",
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            "model": "test-model",
+            "finish_reason": "stop",
+        }
+
 
 class TestOpenHandsAgentRegistration:
+    @pytest.mark.spec("REQ-agents.openhands")
     def test_registered(self):
         AgentRegistry.register_value("openhands", OpenHandsAgent)
         assert AgentRegistry.contains("openhands")
 
     def test_agent_id(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _FakeEngine()
         agent = OpenHandsAgent(engine, "test-model")
         assert agent.agent_id == "openhands"
 
@@ -33,8 +58,7 @@ class TestOpenHandsAgentRegistration:
 class TestOpenHandsAgentImportError:
     def test_run_without_sdk_raises(self):
         """Running without openhands-sdk installed raises ImportError."""
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _FakeEngine()
         agent = OpenHandsAgent(engine, "test-model")
         with pytest.raises(ImportError, match="openhands-sdk"):
             agent.run("Hello")
@@ -42,16 +66,16 @@ class TestOpenHandsAgentImportError:
 
 class TestOpenHandsAgentConstructor:
     def test_default_workspace(self):
-        engine = MagicMock()
+        engine = _FakeEngine()
         agent = OpenHandsAgent(engine, "test-model")
         assert agent._workspace  # should be cwd
 
     def test_custom_workspace(self):
-        engine = MagicMock()
+        engine = _FakeEngine()
         agent = OpenHandsAgent(engine, "test-model", workspace="/tmp/test")
         assert agent._workspace == "/tmp/test"
 
     def test_custom_api_key(self):
-        engine = MagicMock()
+        engine = _FakeEngine()
         agent = OpenHandsAgent(engine, "test-model", api_key="sk-test")
         assert agent._api_key == "sk-test"

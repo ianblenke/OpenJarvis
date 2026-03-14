@@ -1,5 +1,7 @@
 """Tests for the doc_qa scorer."""
 
+import pytest
+
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.scorers.doc_qa import DocQAScorer
 
@@ -21,6 +23,7 @@ def _make_record(required_facts):
     )
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_all_facts_with_citations():
     facts = [
         {"fact": "reclaims storage from dead tuples",
@@ -43,6 +46,7 @@ def test_all_facts_with_citations():
     assert is_correct is True
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_facts_without_citations():
     facts = [
         {"fact": "reclaims storage from dead tuples",
@@ -61,6 +65,7 @@ def test_facts_without_citations():
     assert is_correct is False
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_partial_facts():
     facts = [
         {"fact": "reclaims storage", "source_doc_index": 0},
@@ -79,6 +84,7 @@ def test_partial_facts():
     assert 0.6 <= meta["fact_score"] <= 0.7
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_wrong_citation():
     facts = [
         {"fact": "reclaims storage", "source_doc_index": 0},
@@ -93,6 +99,7 @@ def test_wrong_citation():
     assert meta["citation_score"] == 0.0
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_empty_answer():
     facts = [
         {"fact": "something", "source_doc_index": 0},
@@ -104,6 +111,7 @@ def test_empty_answer():
     assert meta["reason"] == "empty_response"
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_no_required_facts():
     record = EvalRecord(
         record_id="test-dq-2",

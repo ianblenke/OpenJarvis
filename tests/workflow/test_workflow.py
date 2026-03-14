@@ -12,18 +12,21 @@ from openjarvis.workflow.types import NodeType, WorkflowEdge, WorkflowNode
 
 
 class TestWorkflowGraph:
+    @pytest.mark.spec("REQ-workflow.graph.nodes")
     def test_add_node(self):
         g = WorkflowGraph("test")
         g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
         assert g.get_node("a") is not None
         assert len(g.nodes) == 1
 
+    @pytest.mark.spec("REQ-workflow.graph.nodes")
     def test_add_duplicate_node_raises(self):
         g = WorkflowGraph("test")
         g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
         with pytest.raises(ValueError, match="Duplicate"):
             g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
 
+    @pytest.mark.spec("REQ-workflow.graph.nodes")
     def test_add_edge(self):
         g = WorkflowGraph("test")
         g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
@@ -31,12 +34,15 @@ class TestWorkflowGraph:
         g.add_edge(WorkflowEdge(source="a", target="b"))
         assert len(g.edges) == 1
 
+    @pytest.mark.spec("REQ-workflow.graph.nodes")
     def test_add_edge_missing_source_raises(self):
         g = WorkflowGraph("test")
         g.add_node(WorkflowNode(id="b", node_type=NodeType.AGENT))
         with pytest.raises(ValueError, match="Source"):
             g.add_edge(WorkflowEdge(source="a", target="b"))
 
+    @pytest.mark.spec("REQ-workflow.graph.nodes")
+    @pytest.mark.spec("REQ-workflow.graph.validation")
     def test_validate_acyclic(self):
         g = WorkflowGraph("test")
         g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
@@ -45,6 +51,7 @@ class TestWorkflowGraph:
         valid, msg = g.validate()
         assert valid
 
+    @pytest.mark.spec("REQ-workflow.graph.nodes")
     def test_validate_cyclic(self):
         g = WorkflowGraph("test")
         g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
@@ -55,6 +62,8 @@ class TestWorkflowGraph:
         assert not valid
         assert "Cycle" in msg
 
+    @pytest.mark.spec("REQ-workflow.graph.nodes")
+    @pytest.mark.spec("REQ-workflow.graph.ordering")
     def test_topological_sort(self):
         g = WorkflowGraph("test")
         g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
@@ -66,6 +75,7 @@ class TestWorkflowGraph:
         assert order.index("a") < order.index("b")
         assert order.index("b") < order.index("c")
 
+    @pytest.mark.spec("REQ-workflow.graph.nodes")
     def test_execution_stages(self):
         g = WorkflowGraph("test")
         g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
@@ -79,6 +89,8 @@ class TestWorkflowGraph:
         assert set(stages[0]) == {"a", "b"}
         assert stages[1] == ["c"]
 
+    @pytest.mark.spec("REQ-workflow.graph.nodes")
+    @pytest.mark.spec("REQ-workflow.graph.traversal")
     def test_predecessors_successors(self):
         g = WorkflowGraph("test")
         g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
@@ -87,8 +99,38 @@ class TestWorkflowGraph:
         assert g.predecessors("b") == ["a"]
         assert g.successors("a") == ["b"]
 
+    @pytest.mark.spec("REQ-workflow.graph.edges")
+    def test_add_edge_missing_target_raises(self):
+        """Exercise line 34: target node not found."""
+        g = WorkflowGraph("test")
+        g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
+        with pytest.raises(ValueError, match="Target"):
+            g.add_edge(WorkflowEdge(source="a", target="missing"))
+
+    @pytest.mark.spec("REQ-workflow.graph.validation")
+    def test_validate_disconnected_nodes(self):
+        """Disconnected nodes with no edges are still valid (no cycle)."""
+        g = WorkflowGraph("test")
+        g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
+        g.add_node(WorkflowNode(id="b", node_type=NodeType.AGENT))
+        valid, msg = g.validate()
+        assert valid
+        assert msg == ""
+
+    @pytest.mark.spec("REQ-workflow.graph.ordering")
+    def test_topological_sort_cycle_raises(self):
+        """Topological sort on cyclic graph raises ValueError."""
+        g = WorkflowGraph("test")
+        g.add_node(WorkflowNode(id="a", node_type=NodeType.AGENT))
+        g.add_node(WorkflowNode(id="b", node_type=NodeType.AGENT))
+        g.add_edge(WorkflowEdge(source="a", target="b"))
+        g.add_edge(WorkflowEdge(source="b", target="a"))
+        with pytest.raises(ValueError, match="cycle"):
+            g.topological_sort()
+
 
 class TestWorkflowBuilder:
+    @pytest.mark.spec("REQ-workflow.builder.fluent")
     def test_build_simple(self):
         wf = (
             WorkflowBuilder("test")
@@ -101,6 +143,7 @@ class TestWorkflowBuilder:
         assert len(wf.nodes) == 2
         assert len(wf.edges) == 1
 
+    @pytest.mark.spec("REQ-workflow.builder.fluent")
     def test_sequential(self):
         wf = (
             WorkflowBuilder("seq")
@@ -112,6 +155,7 @@ class TestWorkflowBuilder:
         )
         assert len(wf.edges) == 2
 
+    @pytest.mark.spec("REQ-workflow.builder.fluent")
     def test_build_cyclic_raises(self):
         with pytest.raises(ValueError, match="Invalid"):
             (
@@ -125,6 +169,7 @@ class TestWorkflowBuilder:
 
 
 class TestWorkflowEngine:
+    @pytest.mark.spec("REQ-workflow.engine.run")
     def test_run_invalid_graph(self):
         engine = WorkflowEngine()
         g = WorkflowGraph("bad")
@@ -135,6 +180,7 @@ class TestWorkflowEngine:
         result = engine.run(g)
         assert not result.success
 
+    @pytest.mark.spec("REQ-workflow.engine.run")
     def test_run_transform_node(self):
         bus = EventBus(record_history=True)
         engine = WorkflowEngine(bus=bus)
@@ -146,6 +192,7 @@ class TestWorkflowEngine:
         result = engine.run(wf, initial_input="hello")
         assert result.success
 
+    @pytest.mark.spec("REQ-workflow.engine.run")
     def test_events_emitted(self):
         bus = EventBus(record_history=True)
         engine = WorkflowEngine(bus=bus)

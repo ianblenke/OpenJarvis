@@ -74,6 +74,7 @@ def _make_trace(
 
 
 class TestAgentConfigEvolver:
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_analyze_empty_store(self, tmp_path: Path) -> None:
         """Empty trace store returns empty recommendations."""
         db = tmp_path / "traces.db"
@@ -86,6 +87,7 @@ class TestAgentConfigEvolver:
         assert recs == []
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_evolve_recommends_tool_changes(self, tmp_path: Path) -> None:
         """Traces with different tools — best tools recommended for each query class."""
         db = tmp_path / "traces.db"
@@ -148,6 +150,7 @@ class TestAgentConfigEvolver:
 
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_write_config_creates_toml(self, tmp_path: Path) -> None:
         """write_config creates a valid TOML file with correct content."""
         db = tmp_path / "traces.db"
@@ -182,6 +185,7 @@ class TestAgentConfigEvolver:
 
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_versioning_and_rollback(self, tmp_path: Path) -> None:
         """Write v1, write v2, list versions, rollback to v1."""
         db = tmp_path / "traces.db"

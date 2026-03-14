@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import time
 from contextlib import contextmanager
-from unittest.mock import MagicMock
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -20,61 +21,109 @@ from openjarvis.telemetry.instrumented_engine import (
 from openjarvis.telemetry.store import TelemetryStore
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Typed fakes (replacing MagicMock)
 # ---------------------------------------------------------------------------
 
 
-def _mock_engine_with_stream(tokens=None):
-    """Return a mock engine whose stream() yields the given tokens."""
-    if tokens is None:
-        tokens = ["Hello", " ", "world", "!"]
-    engine = MagicMock()
-    engine.engine_id = "mock"
+class _FakeStreamEngine:
+    """Typed fake engine that supports both generate() and stream()."""
 
-    async def _stream(*args, **kwargs):
-        for tok in tokens:
+    def __init__(self, tokens: Optional[List[str]] = None) -> None:
+        self.engine_id = "mock"
+        self._tokens = tokens if tokens is not None else ["Hello", " ", "world", "!"]
+
+    async def stream(self, *args, **kwargs):
+        for tok in self._tokens:
             yield tok
 
-    engine.stream = _stream
-    engine.generate.return_value = {
-        "content": "".join(tokens),
-        "usage": {
-            "prompt_tokens": 5,
-            "completion_tokens": len(tokens),
-            "total_tokens": 5 + len(tokens),
-        },
-        "model": "m",
-        "ttft": 0.01,
-    }
-    return engine
+    def generate(self, messages, **kwargs) -> Dict[str, Any]:
+        return {
+            "content": "".join(self._tokens),
+            "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": len(self._tokens),
+                "total_tokens": 5 + len(self._tokens),
+            },
+            "model": "m",
+            "ttft": 0.01,
+        }
+
+
+class _FakeGenerateEngine:
+    """Typed fake engine with configurable generate() behavior."""
+
+    def __init__(
+        self,
+        generate_fn=None,
+        generate_result: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.engine_id = "mock"
+        self._generate_fn = generate_fn
+        self._generate_result = generate_result or {
+            "content": "hi",
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+            "model": "m",
+            "ttft": 0.0,
+        }
+
+    def generate(self, messages, **kwargs) -> Dict[str, Any]:
+        if self._generate_fn is not None:
+            return self._generate_fn(messages, **kwargs)
+        return self._generate_result
+
+
+@dataclass
+class _FakeEnergySample:
+    """Typed fake for energy monitor sample result."""
+
+    energy_joules: float = 10.0
+    mean_power_watts: float = 200.0
+    peak_power_watts: float = 200.0
+    mean_utilization_pct: float = 80.0
+    peak_utilization_pct: float = 95.0
+    mean_memory_used_gb: float = 16.0
+    peak_memory_used_gb: float = 20.0
+    mean_temperature_c: float = 65.0
+    peak_temperature_c: float = 72.0
+    duration_seconds: float = 0.5
+    num_snapshots: int = 10
+    energy_method: str = "hw_counter"
+    vendor: str = "nvidia"
+    cpu_energy_joules: float = 0.0
+    gpu_energy_joules: float = 10.0
+    dram_energy_joules: float = 0.0
+
+
+class _FakeEnergyMonitor:
+    """Typed fake energy monitor with configurable sample values."""
+
+    def __init__(
+        self,
+        energy_joules: float = 10.0,
+        power_watts: float = 200.0,
+    ) -> None:
+        self._energy_joules = energy_joules
+        self._power_watts = power_watts
+
+    @contextmanager
+    def sample(self):
+        yield _FakeEnergySample(
+            energy_joules=self._energy_joules,
+            mean_power_watts=self._power_watts,
+            peak_power_watts=self._power_watts,
+            gpu_energy_joules=self._energy_joules,
+        )
+
+
+def _mock_engine_with_stream(tokens=None):
+    """Return a typed fake engine whose stream() yields the given tokens."""
+    return _FakeStreamEngine(tokens=tokens)
 
 
 def _mock_energy_monitor(energy_joules=10.0, power_watts=200.0):
-    monitor = MagicMock()
-    sample = MagicMock()
-    sample.energy_joules = energy_joules
-    sample.mean_power_watts = power_watts
-    sample.peak_power_watts = power_watts
-    sample.mean_utilization_pct = 80.0
-    sample.peak_utilization_pct = 95.0
-    sample.mean_memory_used_gb = 16.0
-    sample.peak_memory_used_gb = 20.0
-    sample.mean_temperature_c = 65.0
-    sample.peak_temperature_c = 72.0
-    sample.duration_seconds = 0.5
-    sample.num_snapshots = 10
-    sample.energy_method = "hw_counter"
-    sample.vendor = "nvidia"
-    sample.cpu_energy_joules = 0.0
-    sample.gpu_energy_joules = energy_joules
-    sample.dram_energy_joules = 0.0
-
-    @contextmanager
-    def _sample():
-        yield sample
-
-    monitor.sample = _sample
-    return monitor
+    return _FakeEnergyMonitor(
+        energy_joules=energy_joules, power_watts=power_watts,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -85,19 +134,24 @@ def _mock_energy_monitor(energy_joules=10.0, power_watts=200.0):
 class TestPercentile:
     """_percentile() computes interpolated percentiles."""
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_simple_median(self):
         assert _percentile([1, 2, 3, 4, 5], 0.50) == pytest.approx(3.0)
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_p90(self):
         data = list(range(1, 101))  # 1..100
         assert _percentile(data, 0.90) == pytest.approx(90.1)
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_single_value(self):
         assert _percentile([42.0], 0.99) == pytest.approx(42.0)
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_two_values(self):
         assert _percentile([10, 20], 0.50) == pytest.approx(15.0)
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_unsorted_input(self):
         """Input doesn't need to be sorted."""
         assert _percentile([5, 3, 1, 4, 2], 0.50) == pytest.approx(3.0)
@@ -106,6 +160,7 @@ class TestPercentile:
 class TestComputeItlStats:
     """_compute_itl_stats() computes ITL summary statistics."""
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_empty_list(self):
         stats = _compute_itl_stats([])
         assert stats["mean"] == 0.0
@@ -115,12 +170,14 @@ class TestComputeItlStats:
         assert stats["p99"] == 0.0
         assert stats["std"] == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_single_value(self):
         stats = _compute_itl_stats([10.0])
         assert stats["mean"] == pytest.approx(10.0)
         assert stats["median"] == pytest.approx(10.0)
         assert stats["std"] == 0.0  # single value
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_known_sequence(self):
         values = [10.0, 20.0, 30.0, 40.0, 50.0]
         stats = _compute_itl_stats(values)
@@ -140,6 +197,7 @@ class TestComputeItlStats:
 class TestStreamTelemetry:
     """InstrumentedEngine.stream() records telemetry with ITL."""
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_stream_creates_telemetry_record(self):
         bus = EventBus()
         engine = _mock_engine_with_stream(["a", "b", "c"])
@@ -166,6 +224,7 @@ class TestStreamTelemetry:
         assert rec.is_streaming is True
         assert rec.completion_tokens == 3
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_stream_computes_itl(self):
         bus = EventBus()
         engine = _mock_engine_with_stream(["a", "b", "c", "d", "e"])
@@ -192,6 +251,7 @@ class TestStreamTelemetry:
         assert rec.p95_itl_ms >= 0
         assert rec.p99_itl_ms >= 0
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_stream_with_energy_monitor(self):
         bus = EventBus()
         engine = _mock_engine_with_stream(["x", "y"])
@@ -215,6 +275,7 @@ class TestStreamTelemetry:
         assert rec.energy_joules == 5.0
         assert rec.energy_per_output_token_joules == pytest.approx(5.0 / 2)
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_stream_empty_tokens(self):
         bus = EventBus()
         engine = _mock_engine_with_stream([])
@@ -238,6 +299,7 @@ class TestStreamTelemetry:
         assert rec.mean_itl_ms == 0.0
         assert rec.ttft == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_stream_single_token(self):
         bus = EventBus()
         engine = _mock_engine_with_stream(["only"])
@@ -266,12 +328,11 @@ class TestStreamTelemetry:
 class TestGenerateMeanItlApproximation:
     """generate() computes mean_itl_ms from decode_latency/completion_tokens."""
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_mean_itl_computed(self):
         bus = EventBus()
-        engine = MagicMock()
-        engine.engine_id = "mock"
 
-        def _slow_generate(*args, **kwargs):
+        def _slow_generate(messages, **kwargs):
             time.sleep(0.05)  # ensure latency > ttft
             return {
                 "content": "hi",
@@ -284,7 +345,7 @@ class TestGenerateMeanItlApproximation:
                 "ttft": 0.01,
             }
 
-        engine.generate.side_effect = _slow_generate
+        engine = _FakeGenerateEngine(generate_fn=_slow_generate)
         ie = InstrumentedEngine(engine, bus)
 
         records = []
@@ -302,16 +363,15 @@ class TestGenerateMeanItlApproximation:
         assert rec.mean_itl_ms == pytest.approx(expected)
         assert rec.is_streaming is False
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_no_ttft_no_itl(self):
         bus = EventBus()
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.return_value = {
+        engine = _FakeGenerateEngine(generate_result={
             "content": "hi",
             "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
             "model": "m",
             "ttft": 0.0,
-        }
+        })
         ie = InstrumentedEngine(engine, bus)
 
         records = []
@@ -322,12 +382,13 @@ class TestGenerateMeanItlApproximation:
 
         ie.generate([Message(role=Role.USER, content="hi")], model="m")
         rec = records[0]
-        assert rec.mean_itl_ms == 0.0  # no decode_latency → no ITL
+        assert rec.mean_itl_ms == 0.0  # no decode_latency -> no ITL
 
 
 class TestItlStorage:
     """ITL fields are stored and queryable."""
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_store_and_query_itl(self, tmp_path):
         store = TelemetryStore(tmp_path / "test.db")
         store.record(TelemetryRecord(

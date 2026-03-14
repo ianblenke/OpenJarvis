@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.telemetry.steady_state import (
     SteadyStateConfig,
     SteadyStateDetector,
@@ -14,6 +16,7 @@ from openjarvis.telemetry.steady_state import (
 
 
 class TestSteadyStateConfig:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_defaults(self):
         cfg = SteadyStateConfig()
         assert cfg.warmup_samples == 5
@@ -22,6 +25,7 @@ class TestSteadyStateConfig:
         assert cfg.min_steady_samples == 3
         assert cfg.metric == "throughput"
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_custom_values(self):
         cfg = SteadyStateConfig(warmup_samples=10, cv_threshold=0.1)
         assert cfg.warmup_samples == 10
@@ -34,6 +38,7 @@ class TestSteadyStateConfig:
 
 
 class TestSteadyStateResult:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_default_fields(self):
         r = SteadyStateResult()
         assert r.total_samples == 0
@@ -52,6 +57,7 @@ class TestSteadyStateResult:
 
 
 class TestSteadyStateDetector:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_constant_throughput_reaches_steady_state(self):
         """Constant values should produce CV=0, reaching steady state quickly."""
         cfg = SteadyStateConfig(warmup_samples=3, window_size=3, min_steady_samples=2)
@@ -65,6 +71,7 @@ class TestSteadyStateDetector:
         assert reached is True
         assert detector.result.steady_state_reached is True
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_erratic_values_no_steady_state(self):
         """Highly variable values should not reach steady state."""
         cfg = SteadyStateConfig(
@@ -79,6 +86,7 @@ class TestSteadyStateDetector:
 
         assert detector.result.steady_state_reached is False
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_warmup_boundary(self):
         """First N samples are always warmup regardless of stability."""
         cfg = SteadyStateConfig(warmup_samples=5, window_size=3, min_steady_samples=1)
@@ -93,6 +101,7 @@ class TestSteadyStateDetector:
         assert r.warmup_samples == 5
         assert r.steady_state_samples == 0
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_cv_calculation_correctness(self):
         """Verify CV-based detection with known values."""
         cfg = SteadyStateConfig(
@@ -112,6 +121,7 @@ class TestSteadyStateDetector:
         assert result is True
         assert detector.result.steady_state_reached is True
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_reset_clears_state(self):
         """After reset, detector starts fresh."""
         cfg = SteadyStateConfig(warmup_samples=2, window_size=2, min_steady_samples=1)
@@ -130,6 +140,7 @@ class TestSteadyStateDetector:
         assert r.warmup_throughputs == []
         assert r.steady_throughputs == []
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_result_partitions_warmup_and_steady(self):
         """Result should correctly partition samples into warmup and steady."""
         cfg = SteadyStateConfig(warmup_samples=3, window_size=2, min_steady_samples=1)
@@ -148,6 +159,7 @@ class TestSteadyStateDetector:
         assert len(r.steady_throughputs) == 4
         assert len(r.steady_energies) == 4
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_default_config_when_none(self):
         """Passing None config should use defaults."""
         detector = SteadyStateDetector(None)

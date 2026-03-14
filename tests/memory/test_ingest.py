@@ -13,6 +13,7 @@ from openjarvis.tools.storage.ingest import (
 )
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_detect_file_type_markdown(tmp_path: Path):
     p = tmp_path / "readme.md"
     assert detect_file_type(p) == "markdown"
@@ -20,16 +21,19 @@ def test_detect_file_type_markdown(tmp_path: Path):
     assert detect_file_type(p2) == "markdown"
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_detect_file_type_python(tmp_path: Path):
     p = tmp_path / "main.py"
     assert detect_file_type(p) == "code"
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_detect_file_type_pdf(tmp_path: Path):
     p = tmp_path / "paper.pdf"
     assert detect_file_type(p) == "pdf"
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_detect_file_type_unknown(tmp_path: Path):
     p = tmp_path / "notes.txt"
     assert detect_file_type(p) == "text"
@@ -37,6 +41,7 @@ def test_detect_file_type_unknown(tmp_path: Path):
     assert detect_file_type(p2) == "text"
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_read_document_text(tmp_path: Path):
     p = tmp_path / "hello.txt"
     p.write_text("Hello, world!\nLine two.", encoding="utf-8")
@@ -47,6 +52,7 @@ def test_read_document_text(tmp_path: Path):
     assert meta.size_bytes > 0
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_read_document_utf8_fallback(tmp_path: Path):
     p = tmp_path / "latin.txt"
     p.write_bytes(b"caf\xe9 au lait")
@@ -54,6 +60,7 @@ def test_read_document_utf8_fallback(tmp_path: Path):
     assert "caf" in text
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_read_document_pdf_missing_dep(tmp_path: Path):
     p = tmp_path / "doc.pdf"
     p.write_bytes(b"%PDF-1.4 fake pdf content")
@@ -65,12 +72,14 @@ def test_read_document_pdf_missing_dep(tmp_path: Path):
         assert "pdfplumber" in str(exc)
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_read_document_not_found(tmp_path: Path):
     p = tmp_path / "nope.txt"
     with pytest.raises(FileNotFoundError):
         read_document(p)
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_ingest_single_file(tmp_path: Path):
     p = tmp_path / "doc.txt"
     content = " ".join(f"word{i}" for i in range(100))
@@ -80,6 +89,7 @@ def test_ingest_single_file(tmp_path: Path):
     assert chunks[0].source == str(p)
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_ingest_directory_recursive(tmp_path: Path):
     sub = tmp_path / "docs"
     sub.mkdir()
@@ -97,6 +107,7 @@ def test_ingest_directory_recursive(tmp_path: Path):
     assert any("b.md" in s for s in sources)
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_ingest_skips_hidden_dirs(tmp_path: Path):
     hidden = tmp_path / ".hidden"
     hidden.mkdir()
@@ -113,6 +124,7 @@ def test_ingest_skips_hidden_dirs(tmp_path: Path):
     assert not any(".hidden" in s for s in sources)
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_ingest_skips_pycache(tmp_path: Path):
     cache = tmp_path / "__pycache__"
     cache.mkdir()
@@ -126,11 +138,13 @@ def test_ingest_skips_pycache(tmp_path: Path):
     assert not any("__pycache__" in s for s in sources)
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_ingest_nonexistent_path(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         ingest_path(tmp_path / "nope")
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_ingest_empty_dir(tmp_path: Path):
     empty = tmp_path / "empty"
     empty.mkdir()
@@ -138,6 +152,7 @@ def test_ingest_empty_dir(tmp_path: Path):
     assert chunks == []
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_ingest_skips_env_files(tmp_path: Path):
     (tmp_path / ".env").write_text(
         " ".join(f"x{i}" for i in range(100)), encoding="utf-8"
@@ -151,6 +166,7 @@ def test_ingest_skips_env_files(tmp_path: Path):
     assert any("readme.txt" in s for s in sources)
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_ingest_skips_key_files(tmp_path: Path):
     (tmp_path / "server.key").write_text(
         " ".join(f"x{i}" for i in range(100)), encoding="utf-8"
@@ -164,6 +180,7 @@ def test_ingest_skips_key_files(tmp_path: Path):
     assert any("notes.txt" in s for s in sources)
 
 
+@pytest.mark.spec("REQ-storage.ingest")
 def test_ingest_processes_normal_files(tmp_path: Path):
     (tmp_path / "app.py").write_text(
         " ".join(f"x{i}" for i in range(100)), encoding="utf-8"

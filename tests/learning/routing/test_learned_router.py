@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+
 from openjarvis.core.types import StepType, Trace, TraceStep
 from openjarvis.learning._stubs import RoutingContext
 from openjarvis.learning.routing.learned_router import LearnedRouterPolicy
@@ -43,17 +45,20 @@ def _make_trace(
 
 
 class TestLearnedRouterPolicy:
+    @pytest.mark.spec("REQ-learning.learned-router")
     def test_registered_as_learned(self) -> None:
         from openjarvis.core.registry import RouterPolicyRegistry
         from openjarvis.learning.routing.learned_router import ensure_registered
         ensure_registered()
         assert RouterPolicyRegistry.contains("learned")
 
+    @pytest.mark.spec("REQ-learning.learned-router")
     def test_fallback_no_traces(self) -> None:
         policy = LearnedRouterPolicy(default_model="qwen3:8b")
         ctx = RoutingContext(query="hello")
         assert policy.select_model(ctx) == "qwen3:8b"
 
+    @pytest.mark.spec("REQ-learning.learned-router")
     def test_fallback_chain(self) -> None:
         policy = LearnedRouterPolicy(
             default_model="missing",
@@ -63,6 +68,7 @@ class TestLearnedRouterPolicy:
         ctx = RoutingContext(query="hello")
         assert policy.select_model(ctx) == "llama3:8b"
 
+    @pytest.mark.spec("REQ-learning.learned-router")
     def test_update_from_traces(self, tmp_path: Path) -> None:
         store = TraceStore(tmp_path / "test.db")
         for _ in range(6):
@@ -93,6 +99,7 @@ class TestLearnedRouterPolicy:
         assert policy.select_model(ctx) == "codestral"
         store.close()
 
+    @pytest.mark.spec("REQ-learning.learned-router")
     def test_policy_map_readable(self, tmp_path: Path) -> None:
         store = TraceStore(tmp_path / "test.db")
         for _ in range(5):
@@ -112,40 +119,31 @@ class TestLearnedRouterPolicy:
         assert pmap["short"] == "small-model"
         store.close()
 
+    @pytest.mark.spec("REQ-learning.learned-router")
     def test_observe_online(self) -> None:
         policy = LearnedRouterPolicy(default_model="default")
         policy.min_samples = 3
         policy.observe("hello", "fast-model", "success", 0.9)
         assert policy.policy_map.get("short") == "fast-model"
 
-    def test_batch_update(self) -> None:
+    @pytest.mark.spec("REQ-learning.learned-router")
+    def test_batch_update(self, tmp_path: Path) -> None:
         """Test the batch update() method inherited from SFT routing logic."""
-        from unittest.mock import MagicMock
+        store = TraceStore(tmp_path / "router.db")
+        for query in [
+            "def foo(): pass",
+            "def bar(): pass",
+            "def baz(): pass",
+            "def qux(): pass",
+            "def quux(): pass",
+        ]:
+            store.save(_make_trace(
+                query=query, model="code-model",
+                outcome="success", feedback=0.9,
+            ))
 
         policy = LearnedRouterPolicy(default_model="default")
-        mock_store = MagicMock()
-        mock_store.list_traces.return_value = [
-            _make_trace(
-                query="def foo(): pass", model="code-model",
-                outcome="success", feedback=0.9,
-            ),
-            _make_trace(
-                query="def bar(): pass", model="code-model",
-                outcome="success", feedback=0.85,
-            ),
-            _make_trace(
-                query="def baz(): pass", model="code-model",
-                outcome="success", feedback=0.88,
-            ),
-            _make_trace(
-                query="def qux(): pass", model="code-model",
-                outcome="success", feedback=0.92,
-            ),
-            _make_trace(
-                query="def quux(): pass", model="code-model",
-                outcome="success", feedback=0.87,
-            ),
-        ]
-        result = policy.update(mock_store)
+        result = policy.update(store)
         assert isinstance(result, dict)
         assert "policy_map" in result
+        store.close()

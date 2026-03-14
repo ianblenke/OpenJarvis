@@ -17,6 +17,7 @@ from openjarvis.telemetry.batch import BatchMetrics, EnergyBatch
 
 
 class TestBatchMetricsDefaults:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_all_defaults(self) -> None:
         m = BatchMetrics()
         assert m.batch_id == ""
@@ -29,6 +30,7 @@ class TestBatchMetricsDefaults:
         assert m.mean_throughput_tok_per_sec == 0.0
         assert m.per_request_energy == []
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_custom_values(self) -> None:
         m = BatchMetrics(
             batch_id="abc",
@@ -52,6 +54,7 @@ class TestBatchMetricsDefaults:
 
 
 class TestBatchIdGeneration:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_auto_generated_uuid(self) -> None:
         batch = EnergyBatch()
         # UUID4 format: 8-4-4-4-12 hex digits
@@ -61,10 +64,12 @@ class TestBatchIdGeneration:
         )
         assert re.match(uuid4_re, batch.batch_id)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_custom_batch_id(self) -> None:
         batch = EnergyBatch(batch_id="my-batch-42")
         assert batch.batch_id == "my-batch-42"
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_unique_ids(self) -> None:
         ids = {EnergyBatch().batch_id for _ in range(100)}
         assert len(ids) == 100
@@ -76,6 +81,7 @@ class TestBatchIdGeneration:
 
 
 class TestEnergyBatchNoMonitor:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_record_request_accumulation(self) -> None:
         batch = EnergyBatch()
         with batch.sample() as ctx:
@@ -87,6 +93,7 @@ class TestEnergyBatchNoMonitor:
         assert batch.metrics.total_requests == 3
         assert batch.metrics.total_tokens == 100
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_energy_stays_zero_without_monitor(self) -> None:
         batch = EnergyBatch()
         with batch.sample() as ctx:
@@ -97,6 +104,7 @@ class TestEnergyBatchNoMonitor:
         assert batch.metrics.energy_per_token_joules == 0.0
         assert batch.metrics.mean_power_watts == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_per_request_energy_from_record(self) -> None:
         """When no monitor, per-request energy comes from record_request calls."""
         batch = EnergyBatch()
@@ -108,6 +116,7 @@ class TestEnergyBatchNoMonitor:
         assert batch.metrics.per_request_energy == [1.0, 2.0]
         assert batch.metrics.total_energy_joules == 3.0
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_metrics_computed_on_exit(self) -> None:
         batch = EnergyBatch()
         assert batch.metrics is None  # Before sample()
@@ -115,6 +124,7 @@ class TestEnergyBatchNoMonitor:
             ctx.record_request(tokens=100)
         assert batch.metrics is not None
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_no_requests_yields_zero_metrics(self) -> None:
         batch = EnergyBatch()
         with batch.sample() as _ctx:
@@ -127,6 +137,7 @@ class TestEnergyBatchNoMonitor:
         assert m.energy_per_token_joules == 0.0
         assert m.energy_per_request_joules == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_throughput_computed(self) -> None:
         batch = EnergyBatch()
         with batch.sample() as ctx:
@@ -163,6 +174,7 @@ class _FakeMonitor:
 
 
 class TestEnergyBatchWithMonitor:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_energy_from_monitor(self) -> None:
         monitor = _FakeMonitor(energy_joules=10.0, mean_power_watts=200.0)
         batch = EnergyBatch(energy_monitor=monitor)
@@ -174,6 +186,7 @@ class TestEnergyBatchWithMonitor:
         assert m.total_energy_joules == pytest.approx(10.0)
         assert m.mean_power_watts == pytest.approx(200.0)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_energy_per_token_with_monitor(self) -> None:
         monitor = _FakeMonitor(energy_joules=20.0)
         batch = EnergyBatch(energy_monitor=monitor)
@@ -186,6 +199,7 @@ class TestEnergyBatchWithMonitor:
         assert m.total_tokens == 200
         assert m.energy_per_token_joules == pytest.approx(20.0 / 200.0)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_energy_per_request_with_monitor(self) -> None:
         monitor = _FakeMonitor(energy_joules=15.0)
         batch = EnergyBatch(energy_monitor=monitor)
@@ -199,6 +213,7 @@ class TestEnergyBatchWithMonitor:
         assert m.total_requests == 3
         assert m.energy_per_request_joules == pytest.approx(15.0 / 3.0)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_batch_id_in_metrics(self) -> None:
         batch = EnergyBatch(batch_id="test-batch-99")
         with batch.sample() as ctx:
@@ -214,6 +229,7 @@ class TestEnergyBatchWithMonitor:
 
 
 class TestEnergyPerToken:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_basic_division(self) -> None:
         monitor = _FakeMonitor(energy_joules=50.0)
         batch = EnergyBatch(energy_monitor=monitor)
@@ -223,6 +239,7 @@ class TestEnergyPerToken:
         assert batch.metrics is not None
         assert batch.metrics.energy_per_token_joules == pytest.approx(50.0 / 500.0)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_zero_tokens_yields_zero(self) -> None:
         monitor = _FakeMonitor(energy_joules=10.0)
         batch = EnergyBatch(energy_monitor=monitor)
@@ -232,6 +249,7 @@ class TestEnergyPerToken:
         assert batch.metrics is not None
         assert batch.metrics.energy_per_token_joules == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_many_small_requests(self) -> None:
         monitor = _FakeMonitor(energy_joules=1.0)
         batch = EnergyBatch(energy_monitor=monitor)
@@ -252,6 +270,7 @@ class TestEnergyPerToken:
 
 
 class TestPerRequestEnergy:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_tracks_each_request(self) -> None:
         batch = EnergyBatch()
         with batch.sample() as ctx:
@@ -264,6 +283,7 @@ class TestPerRequestEnergy:
         assert m.per_request_energy == [0.5, 1.0, 1.5]
         assert len(m.per_request_energy) == 3
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_empty_when_no_requests(self) -> None:
         batch = EnergyBatch()
         with batch.sample() as _ctx:
@@ -272,6 +292,7 @@ class TestPerRequestEnergy:
         assert batch.metrics is not None
         assert batch.metrics.per_request_energy == []
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_zeros_when_no_per_request_energy(self) -> None:
         batch = EnergyBatch()
         with batch.sample() as ctx:

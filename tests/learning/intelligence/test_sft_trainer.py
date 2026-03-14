@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from typing import Any, List
+
+import pytest
+
+
+class _FakeTraceStore:
+    """Typed fake for trace store used by trainers."""
+
+    def __init__(self, traces: List[Any] = None) -> None:
+        self._traces = traces or []
+
+    def list_traces(self, **kwargs) -> List[Any]:
+        return self._traces
 
 
 class TestSFTTrainerConfig:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_default_config(self) -> None:
         from openjarvis.core.config import SFTConfig
 
@@ -15,6 +28,7 @@ class TestSFTTrainerConfig:
         assert cfg.lora_rank == 16
         assert cfg.min_pairs == 10
 
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_trainer_init(self) -> None:
         from openjarvis.core.config import SFTConfig
         from openjarvis.learning.intelligence.sft_trainer import SFTTrainer
@@ -23,6 +37,7 @@ class TestSFTTrainerConfig:
         trainer = SFTTrainer(cfg)
         assert trainer.config is cfg
 
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_target_modules_parsing(self) -> None:
         from openjarvis.core.config import SFTConfig
         from openjarvis.learning.intelligence.sft_trainer import SFTTrainer
@@ -33,6 +48,7 @@ class TestSFTTrainerConfig:
 
 
 class TestSFTTrainerTrainOnPairs:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_empty_pairs_skipped(self) -> None:
         from openjarvis.core.config import SFTConfig
         from openjarvis.learning.intelligence.sft_trainer import SFTTrainer
@@ -41,6 +57,7 @@ class TestSFTTrainerTrainOnPairs:
         result = trainer.train_on_pairs([])
         assert result["status"] == "skipped"
 
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_too_few_pairs_skipped(self) -> None:
         from openjarvis.core.config import SFTConfig
         from openjarvis.learning.intelligence.sft_trainer import SFTTrainer
@@ -53,14 +70,22 @@ class TestSFTTrainerTrainOnPairs:
 
 
 class TestSFTTrainerTraceMining:
-    def test_train_delegates_to_miner(self) -> None:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
+    def test_train_delegates_to_miner(self, monkeypatch) -> None:
         from openjarvis.core.config import SFTConfig
         from openjarvis.learning.intelligence.sft_trainer import SFTTrainer
 
         trainer = SFTTrainer(SFTConfig(min_pairs=1))
-        mock_store = MagicMock()
+        store = _FakeTraceStore()
 
-        with patch.object(trainer, "_mine_pairs", return_value=[]) as mock_mine:
-            result = trainer.train(mock_store)
-            mock_mine.assert_called_once_with(mock_store)
-            assert result["status"] == "skipped"
+        mine_called = False
+
+        def _fake_mine(s):
+            nonlocal mine_called
+            mine_called = True
+            return []
+
+        monkeypatch.setattr(trainer, "_mine_pairs", _fake_mine)
+        result = trainer.train(store)
+        assert mine_called
+        assert result["status"] == "skipped"

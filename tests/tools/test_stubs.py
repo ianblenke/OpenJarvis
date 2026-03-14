@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.types import ToolCall, ToolResult
 from openjarvis.tools._stubs import BaseTool, ToolExecutor, ToolSpec
@@ -56,6 +58,7 @@ class _ErrorTool(BaseTool):
 
 
 class TestToolSpec:
+    @pytest.mark.spec("REQ-tools.spec")
     def test_defaults(self):
         s = ToolSpec(name="test", description="A test tool.")
         assert s.name == "test"
@@ -65,6 +68,7 @@ class TestToolSpec:
         assert s.cost_estimate == 0.0
         assert s.requires_confirmation is False
 
+    @pytest.mark.spec("REQ-tools.spec")
     def test_full_spec(self):
         s = ToolSpec(
             name="calc",
@@ -86,17 +90,20 @@ class TestToolSpec:
 
 
 class TestBaseTool:
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_echo_tool_spec(self):
         tool = _EchoTool()
         assert tool.spec.name == "echo"
         assert tool.tool_id == "echo"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_echo_tool_execute(self):
         tool = _EchoTool()
         result = tool.execute(text="hello")
         assert result.content == "hello"
         assert result.success is True
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_to_openai_function(self):
         tool = _EchoTool()
         fn = tool.to_openai_function()
@@ -112,6 +119,8 @@ class TestBaseTool:
 
 
 class TestToolExecutor:
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
+    @pytest.mark.spec("REQ-tools.executor.pipeline")
     def test_execute_success(self):
         executor = ToolExecutor([_EchoTool()])
         call = ToolCall(id="1", name="echo", arguments='{"text":"hi"}')
@@ -120,6 +129,7 @@ class TestToolExecutor:
         assert result.content == "hi"
         assert result.latency_seconds > 0
 
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
     def test_execute_unknown_tool(self):
         executor = ToolExecutor([_EchoTool()])
         call = ToolCall(id="1", name="nonexistent", arguments="{}")
@@ -127,6 +137,7 @@ class TestToolExecutor:
         assert result.success is False
         assert "Unknown tool" in result.content
 
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
     def test_execute_invalid_json(self):
         executor = ToolExecutor([_EchoTool()])
         call = ToolCall(id="1", name="echo", arguments="not json")
@@ -134,6 +145,7 @@ class TestToolExecutor:
         assert result.success is False
         assert "Invalid arguments JSON" in result.content
 
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
     def test_execute_empty_arguments(self):
         executor = ToolExecutor([_EchoTool()])
         call = ToolCall(id="1", name="echo", arguments="")
@@ -141,6 +153,7 @@ class TestToolExecutor:
         assert result.success is True
         assert result.content == ""
 
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
     def test_execute_tool_error(self):
         executor = ToolExecutor([_ErrorTool()])
         call = ToolCall(id="1", name="error", arguments="{}")
@@ -148,6 +161,7 @@ class TestToolExecutor:
         assert result.success is False
         assert "boom" in result.content
 
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
     def test_available_tools(self):
         executor = ToolExecutor([_EchoTool(), _ErrorTool()])
         specs = executor.available_tools()
@@ -155,6 +169,7 @@ class TestToolExecutor:
         names = {s.name for s in specs}
         assert names == {"echo", "error"}
 
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
     def test_get_openai_tools(self):
         executor = ToolExecutor([_EchoTool()])
         tools = executor.get_openai_tools()
@@ -162,6 +177,8 @@ class TestToolExecutor:
         assert tools[0]["type"] == "function"
         assert tools[0]["function"]["name"] == "echo"
 
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
+    @pytest.mark.spec("REQ-tools.executor.events")
     def test_event_bus_integration(self):
         bus = EventBus(record_history=True)
         executor = ToolExecutor([_EchoTool()], bus=bus)
@@ -178,6 +195,7 @@ class TestToolExecutor:
         end = [e for e in events if e.event_type == EventType.TOOL_CALL_END][0]
         assert end.data["success"] is True
 
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
     def test_event_bus_on_error(self):
         bus = EventBus(record_history=True)
         executor = ToolExecutor([_ErrorTool()], bus=bus)
@@ -186,12 +204,14 @@ class TestToolExecutor:
         end = [e for e in bus.history if e.event_type == EventType.TOOL_CALL_END][0]
         assert end.data["success"] is False
 
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
     def test_no_bus_works(self):
         executor = ToolExecutor([_EchoTool()])
         call = ToolCall(id="1", name="echo", arguments='{"text":"ok"}')
         result = executor.execute(call)
         assert result.success is True
 
+    @pytest.mark.spec("REQ-tools.executor.dispatch")
     def test_empty_executor(self):
         executor = ToolExecutor([])
         assert executor.available_tools() == []

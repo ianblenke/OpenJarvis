@@ -2,21 +2,23 @@
 
 import csv
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.datasets.loghub import LogHubDataset
 from openjarvis.evals.scorers.loghub_scorer import LogHubScorer
+from tests.fixtures.engines import FakeInferenceBackend
 
 
 class TestLogHubDataset:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_instantiation(self) -> None:
         ds = LogHubDataset()
         assert ds.dataset_id == "loghub"
         assert ds.dataset_name == "LogHub"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_has_required_methods(self) -> None:
         ds = LogHubDataset()
         assert hasattr(ds, "load")
@@ -25,10 +27,12 @@ class TestLogHubDataset:
 
 
 class TestLogHubDatasetDetails:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_invalid_subset_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown LogHub subset"):
             LogHubDataset(subset="nonexistent")
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_session_mode_parsing(self, tmp_path: Path) -> None:
         log_file = tmp_path / "HDFS.log"
         label_file = tmp_path / "anomaly_label.csv"
@@ -58,6 +62,7 @@ class TestLogHubDatasetDetails:
         assert by_id["blk_456"].reference == "normal"
         assert by_id["blk_123"].category == "agentic"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_window_mode_parsing(self, tmp_path: Path) -> None:
         log_file = tmp_path / "BGL.log"
         # 5 lines: 3 normal (start with -), 2 anomalous.
@@ -82,24 +87,25 @@ class TestLogHubDatasetDetails:
         assert records[1].reference == "anomaly"
         assert records[1].metadata["num_lines"] == 2
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_size_before_load(self) -> None:
         ds = LogHubDataset()
         assert ds.size() == 0
 
 
-def _mock_backend() -> MagicMock:
-    backend = MagicMock()
-    backend.generate.return_value = "A"
-    return backend
+def _fake_backend() -> FakeInferenceBackend:
+    return FakeInferenceBackend(responses=["A"])
 
 
 class TestLogHubScorer:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_instantiation(self) -> None:
-        s = LogHubScorer(_mock_backend(), "test-model")
+        s = LogHubScorer(_fake_backend(), "test-model")
         assert s.scorer_id == "loghub"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_exact_match_anomaly(self) -> None:
-        s = LogHubScorer(_mock_backend(), "test-model")
+        s = LogHubScorer(_fake_backend(), "test-model")
         record = EvalRecord(
             record_id="test-1", problem="analyze logs",
             reference="anomaly", category="agentic",
@@ -108,8 +114,9 @@ class TestLogHubScorer:
         assert is_correct is True
         assert meta["match_type"] == "exact"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_exact_match_normal(self) -> None:
-        s = LogHubScorer(_mock_backend(), "test-model")
+        s = LogHubScorer(_fake_backend(), "test-model")
         record = EvalRecord(
             record_id="test-2", problem="analyze logs",
             reference="normal", category="agentic",
@@ -117,8 +124,9 @@ class TestLogHubScorer:
         is_correct, meta = s.score(record, "NORMAL - no issues detected")
         assert is_correct is True
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_empty_response(self) -> None:
-        s = LogHubScorer(_mock_backend(), "test-model")
+        s = LogHubScorer(_fake_backend(), "test-model")
         record = EvalRecord(
             record_id="test-3", problem="analyze logs",
             reference="anomaly", category="agentic",
@@ -127,8 +135,9 @@ class TestLogHubScorer:
         assert is_correct is False
         assert meta["reason"] == "empty_response"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_wrong_classification(self) -> None:
-        s = LogHubScorer(_mock_backend(), "test-model")
+        s = LogHubScorer(_fake_backend(), "test-model")
         record = EvalRecord(
             record_id="test-4", problem="analyze logs",
             reference="anomaly", category="agentic",
@@ -138,19 +147,22 @@ class TestLogHubScorer:
 
 
 class TestLogHubCLI:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_in_benchmarks_dict(self) -> None:
         from openjarvis.evals.cli import BENCHMARKS
         assert "loghub" in BENCHMARKS
         assert BENCHMARKS["loghub"]["category"] == "agentic"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_build_dataset(self) -> None:
         from openjarvis.evals.cli import _build_dataset
         ds = _build_dataset("loghub")
         assert ds is not None
         assert ds.dataset_id == "loghub"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_build_scorer(self) -> None:
         from openjarvis.evals.cli import _build_scorer
-        s = _build_scorer("loghub", _mock_backend(), "test-model")
+        s = _build_scorer("loghub", _fake_backend(), "test-model")
         assert s is not None
         assert s.scorer_id == "loghub"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.evals.scorers._checklist import (
     ChecklistScorer,
     contains_key_phrases,
@@ -9,14 +11,17 @@ from openjarvis.evals.scorers._checklist import (
 )
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_normalize_str_basic():
     assert normalize_str("Hello, World!") == "hello world"
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_normalize_str_whitespace():
     assert normalize_str("  lots   of   spaces  ") == "lots of spaces"
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_contains_key_phrases_above_threshold():
     answer = "The system uses SQLite and FAISS for memory storage."
     reference = "SQLite; FAISS; BM25; hybrid"
@@ -24,12 +29,14 @@ def test_contains_key_phrases_above_threshold():
     assert contains_key_phrases(answer, reference) is True
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_contains_key_phrases_below_threshold():
     answer = "The system uses PostgreSQL."
     reference = "SQLite; FAISS; BM25; hybrid"
     assert contains_key_phrases(answer, reference) is False
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_contains_key_phrases_empty_reference():
     assert contains_key_phrases("anything", "") is False
 
@@ -44,6 +51,7 @@ class FakeJudgeBackend:
         return self._response
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_checklist_scorer_all_pass():
     response = (
         "1. yes — The response mentions Redis\n"
@@ -63,6 +71,7 @@ def test_checklist_scorer_all_pass():
     assert all(d["passed"] for d in details)
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_checklist_scorer_partial():
     response = (
         "1. yes — Redis is mentioned\n"
@@ -82,6 +91,7 @@ def test_checklist_scorer_partial():
     assert details[1]["passed"] is False
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_checklist_scorer_empty_answer():
     backend = FakeJudgeBackend("")
     scorer = ChecklistScorer(backend, "test-model")

@@ -21,6 +21,7 @@ class TestComputePhaseMetrics:
             ))
         return session
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_basic_metrics(self):
         session = self._make_session_with_samples()
         result = compute_phase_metrics(session, 0, 1_000_000_000, 100)
@@ -28,11 +29,13 @@ class TestComputePhaseMetrics:
         assert result["tokens"] == 100
         assert result["energy_j"] > 0  # trapezoidal integral
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_zero_tokens(self):
         session = self._make_session_with_samples()
         result = compute_phase_metrics(session, 0, 1_000_000_000, 0)
         assert result["energy_per_token_j"] == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_split_at_ttft(self):
         session = self._make_session_with_samples()
         prefill, decode = split_at_ttft(

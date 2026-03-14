@@ -1,24 +1,25 @@
 """Tests for PaperArena benchmark."""
 
-from unittest.mock import MagicMock
+import pytest
 
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.datasets.paperarena import PaperArenaDataset
 from openjarvis.evals.scorers.paperarena_judge import PaperArenaScorer
+from tests.fixtures.engines import FakeInferenceBackend
 
 
-def _mock_backend() -> MagicMock:
-    backend = MagicMock()
-    backend.generate.return_value = "CORRECT"
-    return backend
+def _mock_backend():
+    return FakeInferenceBackend(responses=["CORRECT"])
 
 
 class TestPaperArenaDataset:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_instantiation(self) -> None:
         ds = PaperArenaDataset()
         assert ds.dataset_id == "paperarena"
         assert ds.dataset_name == "PaperArena"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_has_required_methods(self) -> None:
         ds = PaperArenaDataset()
         assert hasattr(ds, "load")
@@ -27,10 +28,12 @@ class TestPaperArenaDataset:
 
 
 class TestPaperArenaScorer:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_instantiation(self) -> None:
         s = PaperArenaScorer(_mock_backend(), "test-model")
         assert s.scorer_id == "paperarena"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_mc_correct(self) -> None:
         s = PaperArenaScorer(_mock_backend(), "test-model")
         record = EvalRecord(
@@ -45,6 +48,7 @@ class TestPaperArenaScorer:
         assert is_correct is True
         assert meta["match_type"] == "exact_letter"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_mc_wrong(self) -> None:
         s = PaperArenaScorer(_mock_backend(), "test-model")
         record = EvalRecord(
@@ -59,6 +63,7 @@ class TestPaperArenaScorer:
         assert is_correct is False
         assert meta["candidate_letter"] == "C"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_open_answer_judge(self) -> None:
         s = PaperArenaScorer(_mock_backend(), "test-model")
         record = EvalRecord(
@@ -73,9 +78,9 @@ class TestPaperArenaScorer:
         assert is_correct is True
         assert meta["match_type"] == "llm_judge"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_closed_answer_judge(self) -> None:
-        backend = MagicMock()
-        backend.generate.return_value = "INCORRECT"
+        backend = FakeInferenceBackend(responses=["INCORRECT"])
         s = PaperArenaScorer(backend, "test-model")
         record = EvalRecord(
             record_id="pa-4",
@@ -88,6 +93,7 @@ class TestPaperArenaScorer:
         is_correct, meta = s.score(record, "The value is 100")
         assert is_correct is False
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_empty_response(self) -> None:
         s = PaperArenaScorer(_mock_backend(), "test-model")
         record = EvalRecord(
@@ -100,15 +106,18 @@ class TestPaperArenaScorer:
 
 
 class TestPaperArenaCLI:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_in_benchmarks(self) -> None:
         from openjarvis.evals.cli import BENCHMARKS
         assert "paperarena" in BENCHMARKS
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_build_dataset(self) -> None:
         from openjarvis.evals.cli import _build_dataset
         ds = _build_dataset("paperarena")
         assert ds.dataset_id == "paperarena"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_build_scorer(self) -> None:
         from openjarvis.evals.cli import _build_scorer
         s = _build_scorer("paperarena", _mock_backend(), "test-model")

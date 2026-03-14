@@ -38,6 +38,7 @@ def _setup_models() -> None:
 class TestRouterWithNewModels:
     """Router behavior when using the new local models."""
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_short_query_routes_to_smallest(self) -> None:
         _setup_models()
         router = HeuristicRouter(
@@ -47,6 +48,7 @@ class TestRouterWithNewModels:
         selected = router.select_model(ctx)
         assert selected == "qwen3:8b"
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_code_query_routes_to_largest(self) -> None:
         _setup_models()
         router = HeuristicRouter(
@@ -60,6 +62,7 @@ class TestRouterWithNewModels:
         selected = router.select_model(ctx)
         assert selected == "gpt-oss:120b"
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_code_query_with_coder_available(self) -> None:
         _setup_models()
         models = NEW_LOCAL_MODELS + ["deepseek-coder-v2:16b"]
@@ -72,6 +75,7 @@ class TestRouterWithNewModels:
         selected = router.select_model(ctx)
         assert selected == "deepseek-coder-v2:16b"
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_math_query_routes_to_largest(self) -> None:
         _setup_models()
         router = HeuristicRouter(
@@ -85,6 +89,7 @@ class TestRouterWithNewModels:
         selected = router.select_model(ctx)
         assert selected == "gpt-oss:120b"
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_long_context_routes_to_largest(self) -> None:
         _setup_models()
         router = HeuristicRouter(
@@ -94,6 +99,7 @@ class TestRouterWithNewModels:
         selected = router.select_model(ctx)
         assert selected == "gpt-oss:120b"
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_high_urgency_routes_to_smallest(self) -> None:
         _setup_models()
         router = HeuristicRouter(
@@ -108,6 +114,7 @@ class TestRouterWithNewModels:
         selected = router.select_model(ctx)
         assert selected == "qwen3:8b"
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_reasoning_query_routes_to_largest(self) -> None:
         _setup_models()
         router = HeuristicRouter(
@@ -120,6 +127,7 @@ class TestRouterWithNewModels:
         selected = router.select_model(ctx)
         assert selected == "gpt-oss:120b"
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_medium_query_uses_default(self) -> None:
         _setup_models()
         router = HeuristicRouter(
@@ -137,6 +145,7 @@ class TestRouterWithNewModels:
 class TestRouterCloudFallback:
     """Router behavior when only cloud models are available."""
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_no_local_falls_to_cloud(self) -> None:
         _setup_models()
         router = HeuristicRouter(available_models=CLOUD_MODELS)
@@ -144,6 +153,7 @@ class TestRouterCloudFallback:
         selected = router.select_model(ctx)
         assert selected in CLOUD_MODELS
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_cloud_model_selection_with_math(self) -> None:
         _setup_models()
         router = HeuristicRouter(available_models=CLOUD_MODELS)
@@ -153,6 +163,7 @@ class TestRouterCloudFallback:
         selected = router.select_model(ctx)
         assert selected in CLOUD_MODELS
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_empty_models_returns_fallback(self) -> None:
         router = HeuristicRouter(
             available_models=[],
@@ -174,6 +185,7 @@ class TestRouterParameterized:
             ("x" * 501, True),
         ],
     )
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_query_type_selects_expected_size(
         self,
         query: str,
@@ -191,6 +203,7 @@ class TestRouterParameterized:
             assert selected == "qwen3:8b"
 
     @pytest.mark.parametrize("model_id", NEW_LOCAL_MODELS)
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_single_model_always_returns_it(
         self, model_id: str,
     ) -> None:
@@ -202,6 +215,7 @@ class TestRouterParameterized:
         assert router.select_model(ctx) == model_id
 
     @pytest.mark.parametrize("urgency", [0.85, 0.9, 1.0])
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_high_urgency_always_smallest(
         self, urgency: float,
     ) -> None:

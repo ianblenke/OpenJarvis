@@ -5,6 +5,7 @@ from __future__ import annotations
 from io import StringIO
 from pathlib import Path
 
+import pytest
 from rich.console import Console
 
 from openjarvis.evals.core.display import (
@@ -53,12 +54,14 @@ def _make_metric_stats(**kw) -> MetricStats:
 
 
 class TestPrintBanner:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_produces_output(self):
         console, buf = _make_console()
         print_banner(console)
         output = buf.getvalue()
         assert "OpenJarvis" in output or "___" in output
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_contains_version(self):
         console, buf = _make_console()
         print_banner(console)
@@ -67,6 +70,7 @@ class TestPrintBanner:
 
 
 class TestPrintSection:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_produces_rule(self):
         console, buf = _make_console()
         print_section(console, "Configuration")
@@ -75,6 +79,7 @@ class TestPrintSection:
 
 
 class TestPrintRunHeader:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_shows_config_details(self):
         console, buf = _make_console()
         print_run_header(
@@ -90,6 +95,7 @@ class TestPrintRunHeader:
         assert "qwen3:8b" in output
         assert "50" in output
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_shows_warmup_when_nonzero(self):
         console, buf = _make_console()
         print_run_header(
@@ -106,6 +112,7 @@ class TestPrintRunHeader:
 
 
 class TestPrintMetricsTable:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_full_stats(self):
         summary = _make_summary(
             accuracy_stats=_make_metric_stats(),
@@ -134,6 +141,7 @@ class TestPrintMetricsTable:
         assert "Energy" in output
         assert "0.75" in output  # headline accuracy
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_accuracy_latency_only(self):
         summary = _make_summary(
             accuracy_stats=_make_metric_stats(mean=0.75),
@@ -147,6 +155,7 @@ class TestPrintMetricsTable:
         # Energy rows should not appear
         assert "Energy (J)" not in output
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_no_stats_produces_headline_only(self):
         summary = _make_summary()
         console, buf = _make_console()
@@ -157,6 +166,7 @@ class TestPrintMetricsTable:
 
 
 class TestPrintSubjectTable:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_subject_breakdown(self):
         per_subject = {
             "math": {"accuracy": 0.8, "correct": 8, "scored": 10},
@@ -171,6 +181,7 @@ class TestPrintSubjectTable:
 
 
 class TestPrintSuiteSummary:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_multiple_summaries(self):
         summaries = [
             _make_summary(benchmark="supergpqa", model="qwen3:8b"),
@@ -185,6 +196,7 @@ class TestPrintSuiteSummary:
 
 
 class TestPrintCompletion:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_shows_paths(self):
         summary = _make_summary()
         console, buf = _make_console()
@@ -198,6 +210,7 @@ class TestPrintCompletion:
         assert "traces" in output
         assert "complete" in output.lower()
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_no_paths(self):
         summary = _make_summary()
         console, buf = _make_console()

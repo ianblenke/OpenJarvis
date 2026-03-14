@@ -117,6 +117,28 @@ markers = [
     "apple: requires Apple Silicon",
     "macos15: requires macOS 15+ (Sequoia) for Apple FM",
     "slow: long-running test",
+    "spec: references an openspec requirement (e.g. @pytest.mark.spec('core/registry'))",
+]
+
+[tool.coverage.run]
+source = ["src/openjarvis"]
+branch = true
+omit = [
+    "src/openjarvis/__init__.py",
+    "src/openjarvis/*/__init__.py",
+    "src/openjarvis/*/*/__init__.py",
+    "src/openjarvis/*/*/*/__init__.py",
+]
+
+[tool.coverage.report]
+fail_under = 0
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
 ]
 
 [tool.ruff]

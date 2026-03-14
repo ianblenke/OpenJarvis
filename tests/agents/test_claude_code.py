@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from unittest.mock import MagicMock, patch
+from typing import Any, List
 
 import pytest
 
@@ -17,6 +17,7 @@ from openjarvis.agents.claude_code import (
 )
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.registry import AgentRegistry
+from tests.fixtures.engines import FakeEngine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,21 +48,27 @@ def _mock_proc(
     )
 
 
+def _make_engine() -> FakeEngine:
+    return FakeEngine(engine_id="fake")
+
+
 # ---------------------------------------------------------------------------
 # Registration tests
 # ---------------------------------------------------------------------------
 
 
 class TestClaudeCodeRegistration:
+    @pytest.mark.spec("REQ-agents.base.registration")
     def test_agent_id(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _make_engine()
         agent = ClaudeCodeAgent(engine, "test-model")
         assert agent.agent_id == "claude_code"
 
+    @pytest.mark.spec("REQ-agents.base.protocol")
     def test_accepts_tools_false(self):
         assert ClaudeCodeAgent.accepts_tools is False
 
+    @pytest.mark.spec("REQ-agents.base.registration")
     def test_registry_key(self):
         AgentRegistry.register_value("claude_code", ClaudeCodeAgent)
         assert AgentRegistry.contains("claude_code")
@@ -75,38 +82,41 @@ class TestClaudeCodeRegistration:
 
 
 class TestEnsureRunner:
-    def test_raises_when_node_not_found(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
+    @pytest.mark.spec("REQ-agents.base.run")
+    def test_raises_when_node_not_found(self, monkeypatch):
+        engine = _make_engine()
         agent = ClaudeCodeAgent(engine, "test-model")
-        with patch("shutil.which", return_value=None):
-            with pytest.raises(RuntimeError, match="Node.js"):
-                agent._ensure_runner()
+        monkeypatch.setattr("shutil.which", lambda cmd: None)
+        with pytest.raises(RuntimeError, match="Node.js"):
+            agent._ensure_runner()
 
-    def test_creates_runner_dir(self, tmp_path):
-        engine = MagicMock()
-        engine.engine_id = "mock"
+    @pytest.mark.spec("REQ-agents.base.run")
+    def test_creates_runner_dir(self, tmp_path, monkeypatch):
+        engine = _make_engine()
         agent = ClaudeCodeAgent(engine, "test-model")
 
         home_dir = tmp_path / "home"
         home_dir.mkdir()
 
-        with (
-            patch("shutil.which", return_value="/usr/bin/node"),
-            patch("pathlib.Path.home", return_value=home_dir),
-            patch("subprocess.run") as mock_run,
-        ):
-            mock_run.return_value = _mock_proc()
-            dest = home_dir / ".openjarvis" / "claude_code_runner"
-            result = agent._ensure_runner()
-            assert result == dest
-            mock_run.assert_called_once()
-            call_args = mock_run.call_args
-            assert "npm" in call_args[0][0][0]
+        run_calls: List[Any] = []
 
-    def test_skips_npm_install_when_node_modules_exists(self, tmp_path):
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        def fake_run(args, **kwargs):
+            run_calls.append((args, kwargs))
+            return _mock_proc()
+
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/node")
+        monkeypatch.setattr("pathlib.Path.home", lambda: home_dir)
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        dest = home_dir / ".openjarvis" / "claude_code_runner"
+        result = agent._ensure_runner()
+        assert result == dest
+        assert len(run_calls) == 1
+        assert "npm" in run_calls[0][0][0]
+
+    @pytest.mark.spec("REQ-agents.base.run")
+    def test_skips_npm_install_when_node_modules_exists(self, tmp_path, monkeypatch):
+        engine = _make_engine()
         agent = ClaudeCodeAgent(engine, "test-model")
 
         home_dir = tmp_path / "home"
@@ -114,13 +124,18 @@ class TestEnsureRunner:
         dest.mkdir(parents=True)
         (dest / "node_modules").mkdir()
 
-        with (
-            patch("shutil.which", return_value="/usr/bin/node"),
-            patch("pathlib.Path.home", return_value=home_dir),
-            patch("subprocess.run") as mock_run,
-        ):
-            agent._ensure_runner()
-            mock_run.assert_not_called()
+        run_calls: List[Any] = []
+
+        def fake_run(args, **kwargs):
+            run_calls.append((args, kwargs))
+            return _mock_proc()
+
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/node")
+        monkeypatch.setattr("pathlib.Path.home", lambda: home_dir)
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        agent._ensure_runner()
+        assert len(run_calls) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +145,7 @@ class TestEnsureRunner:
 
 class TestClaudeCodeRun:
     def _make_agent(self, **kwargs):
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _make_engine()
         defaults = {
             "api_key": "test-key",
             "workspace": "/tmp/test",
@@ -139,7 +153,8 @@ class TestClaudeCodeRun:
         defaults.update(kwargs)
         return ClaudeCodeAgent(engine, "test-model", **defaults)
 
-    def test_successful_run(self):
+    @pytest.mark.spec("REQ-agents.base.run")
+    def test_successful_run(self, monkeypatch):
         agent = self._make_agent()
         output = _wrap_output({
             "content": "Hello from Claude Code!",
@@ -148,14 +163,10 @@ class TestClaudeCodeRun:
         })
         proc = _mock_proc(stdout=output)
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch("subprocess.run", return_value=proc),
-        ):
-            result = agent.run("Say hello")
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: proc)
+
+        result = agent.run("Say hello")
 
         assert isinstance(result, AgentResult)
         assert result.content == "Hello from Claude Code!"
@@ -163,7 +174,8 @@ class TestClaudeCodeRun:
         assert result.tool_results == []
         assert result.metadata["message_count"] == 3
 
-    def test_run_with_tool_results(self):
+    @pytest.mark.spec("REQ-agents.result")
+    def test_run_with_tool_results(self, monkeypatch):
         agent = self._make_agent()
         output = _wrap_output({
             "content": "I read the file.",
@@ -178,21 +190,18 @@ class TestClaudeCodeRun:
         })
         proc = _mock_proc(stdout=output)
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch("subprocess.run", return_value=proc),
-        ):
-            result = agent.run("Read main.py")
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: proc)
+
+        result = agent.run("Read main.py")
 
         assert len(result.tool_results) == 1
         assert result.tool_results[0].tool_name == "Read"
         assert result.tool_results[0].content == "file contents"
         assert result.tool_results[0].success is True
 
-    def test_stdin_json_payload(self):
+    @pytest.mark.spec("REQ-agents.base.run")
+    def test_stdin_json_payload(self, monkeypatch):
         agent = self._make_agent(
             api_key="sk-test",
             workspace="/projects/myapp",
@@ -207,19 +216,18 @@ class TestClaudeCodeRun:
         })
         proc = _mock_proc(stdout=output)
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch(
-                "subprocess.run", return_value=proc,
-            ) as mock_run,
-        ):
-            agent.run("Do something")
+        run_calls: List[Any] = []
 
-        call_kwargs = mock_run.call_args
-        stdin_json = json.loads(call_kwargs.kwargs["input"])
+        def capture_run(*args, **kwargs):
+            run_calls.append(kwargs)
+            return proc
+
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+        monkeypatch.setattr("subprocess.run", capture_run)
+
+        agent.run("Do something")
+
+        stdin_json = json.loads(run_calls[0]["input"])
         assert stdin_json["prompt"] == "Do something"
         assert stdin_json["api_key"] == "sk-test"
         assert stdin_json["workspace"] == "/projects/myapp"
@@ -227,76 +235,66 @@ class TestClaudeCodeRun:
         assert stdin_json["allowed_tools"] == ["Read", "Write"]
         assert stdin_json["system_prompt"] == "Be helpful."
 
-    def test_timeout_handling(self):
+    @pytest.mark.spec("REQ-agents.base.run")
+    def test_timeout_handling(self, monkeypatch):
         agent = self._make_agent(timeout=5)
-        exc = subprocess.TimeoutExpired(
-            cmd="node", timeout=5,
-        )
+        exc = subprocess.TimeoutExpired(cmd="node", timeout=5)
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch("subprocess.run", side_effect=exc),
-        ):
-            result = agent.run("Slow task")
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+
+        def raise_timeout(*args, **kwargs):
+            raise exc
+
+        monkeypatch.setattr("subprocess.run", raise_timeout)
+
+        result = agent.run("Slow task")
 
         assert "timed out" in result.content
         assert result.metadata["error"] is True
         assert result.metadata["error_type"] == "timeout"
 
-    def test_nonzero_exit_code(self):
+    @pytest.mark.spec("REQ-agents.base.run")
+    def test_nonzero_exit_code(self, monkeypatch):
         agent = self._make_agent()
         proc = _mock_proc(
             returncode=1, stderr="ENOENT: module not found",
         )
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch("subprocess.run", return_value=proc),
-        ):
-            result = agent.run("Failing task")
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: proc)
+
+        result = agent.run("Failing task")
 
         assert "failed" in result.content.lower()
         assert "ENOENT" in result.content
         assert result.metadata["error"] is True
         assert result.metadata["returncode"] == 1
 
-    def test_no_sentinels_in_output(self):
+    @pytest.mark.spec("REQ-agents.base.run")
+    def test_no_sentinels_in_output(self, monkeypatch):
         """Plain text without sentinels used as content."""
         agent = self._make_agent()
         proc = _mock_proc(stdout="Some plain text output")
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch("subprocess.run", return_value=proc),
-        ):
-            result = agent.run("Query")
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: proc)
+
+        result = agent.run("Query")
 
         assert result.content == "Some plain text output"
         assert result.tool_results == []
 
-    def test_malformed_json_in_sentinels(self):
+    @pytest.mark.spec("REQ-agents.base.run")
+    def test_malformed_json_in_sentinels(self, monkeypatch):
         """Sentinel-wrapped content is not valid JSON."""
         agent = self._make_agent()
         bad = f"{_OUTPUT_START}\nnot valid json\n{_OUTPUT_END}"
         proc = _mock_proc(stdout=bad)
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch("subprocess.run", return_value=proc),
-        ):
-            result = agent.run("Query")
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: proc)
+
+        result = agent.run("Query")
 
         assert result.metadata.get("parse_error") is True
 
@@ -307,10 +305,10 @@ class TestClaudeCodeRun:
 
 
 class TestClaudeCodeEvents:
-    def test_emits_turn_start_and_end(self):
+    @pytest.mark.spec("REQ-agents.base.events")
+    def test_emits_turn_start_and_end(self, monkeypatch):
         bus = EventBus(record_history=True)
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _make_engine()
         agent = ClaudeCodeAgent(
             engine, "test-model", bus=bus, api_key="k",
         )
@@ -321,23 +319,19 @@ class TestClaudeCodeEvents:
         })
         proc = _mock_proc(stdout=output)
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch("subprocess.run", return_value=proc),
-        ):
-            agent.run("Hello")
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: proc)
+
+        agent.run("Hello")
 
         types = [e.event_type for e in bus.history]
         assert EventType.AGENT_TURN_START in types
         assert EventType.AGENT_TURN_END in types
 
-    def test_turn_start_data(self):
+    @pytest.mark.spec("REQ-agents.base.events")
+    def test_turn_start_data(self, monkeypatch):
         bus = EventBus(record_history=True)
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _make_engine()
         agent = ClaudeCodeAgent(
             engine, "test-model", bus=bus, api_key="k",
         )
@@ -348,14 +342,10 @@ class TestClaudeCodeEvents:
         })
         proc = _mock_proc(stdout=output)
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch("subprocess.run", return_value=proc),
-        ):
-            agent.run("test input")
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: proc)
+
+        agent.run("test input")
 
         start_events = [
             e for e in bus.history
@@ -365,23 +355,19 @@ class TestClaudeCodeEvents:
         assert start_events[0].data["agent"] == "claude_code"
         assert start_events[0].data["input"] == "test input"
 
-    def test_error_emits_turn_end(self):
+    @pytest.mark.spec("REQ-agents.base.events")
+    def test_error_emits_turn_end(self, monkeypatch):
         bus = EventBus(record_history=True)
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _make_engine()
         agent = ClaudeCodeAgent(
             engine, "test-model", bus=bus, api_key="k",
         )
         proc = _mock_proc(returncode=1, stderr="error")
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch("subprocess.run", return_value=proc),
-        ):
-            agent.run("Fail")
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: proc)
+
+        agent.run("Fail")
 
         types = [e.event_type for e in bus.history]
         assert EventType.AGENT_TURN_END in types
@@ -393,6 +379,7 @@ class TestClaudeCodeEvents:
 
 
 class TestParseOutput:
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_parses_valid_sentinels(self):
         payload = {
             "content": "hello",
@@ -407,6 +394,7 @@ class TestParseOutput:
         assert tools == []
         assert meta == {"k": "v"}
 
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_no_sentinels(self):
         content, tools, meta = ClaudeCodeAgent._parse_output(
             "plain text",
@@ -415,6 +403,7 @@ class TestParseOutput:
         assert tools == []
         assert meta == {}
 
+    @pytest.mark.spec("REQ-agents.result")
     def test_tool_results_parsed(self):
         payload = {
             "content": "done",
@@ -442,6 +431,7 @@ class TestParseOutput:
         assert tools[1].tool_name == "Write"
         assert tools[1].success is False
 
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_extra_stdout_before_sentinels(self):
         """Runner may log before sentinels -- should parse."""
         payload = {
@@ -459,6 +449,7 @@ class TestParseOutput:
         )
         assert content == "result"
 
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_invalid_json(self):
         stdout = f"{_OUTPUT_START}\n{{broken\n{_OUTPUT_END}"
         content, tools, meta = ClaudeCodeAgent._parse_output(
@@ -473,39 +464,39 @@ class TestParseOutput:
 
 
 class TestClaudeCodeDefaults:
+    @pytest.mark.spec("REQ-agents.base.protocol")
     def test_default_api_key_from_env(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key-123")
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _make_engine()
         agent = ClaudeCodeAgent(engine, "test-model")
         assert agent._api_key == "env-key-123"
 
+    @pytest.mark.spec("REQ-agents.base.protocol")
     def test_explicit_api_key_overrides_env(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _make_engine()
         agent = ClaudeCodeAgent(
             engine, "test-model", api_key="explicit-key",
         )
         assert agent._api_key == "explicit-key"
 
+    @pytest.mark.spec("REQ-agents.base.protocol")
     def test_default_timeout(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _make_engine()
         agent = ClaudeCodeAgent(engine, "test-model")
         assert agent._timeout == 300
 
+    @pytest.mark.spec("REQ-agents.base.protocol")
     def test_custom_timeout(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = _make_engine()
         agent = ClaudeCodeAgent(
             engine, "test-model", timeout=60,
         )
         assert agent._timeout == 60
 
-    def test_no_bus_works(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
+    @pytest.mark.spec("REQ-agents.base.run")
+    def test_no_bus_works(self, monkeypatch):
+        engine = _make_engine()
         agent = ClaudeCodeAgent(
             engine, "test-model", api_key="k",
         )
@@ -516,13 +507,9 @@ class TestClaudeCodeDefaults:
         })
         proc = _mock_proc(stdout=output)
 
-        with (
-            patch.object(
-                agent, "_ensure_runner",
-                return_value="/fake/runner",
-            ),
-            patch("subprocess.run", return_value=proc),
-        ):
-            result = agent.run("Hello")
+        monkeypatch.setattr(agent, "_ensure_runner", lambda: "/fake/runner")
+        monkeypatch.setattr("subprocess.run", lambda *a, **kw: proc)
+
+        result = agent.run("Hello")
 
         assert result.content == "ok"

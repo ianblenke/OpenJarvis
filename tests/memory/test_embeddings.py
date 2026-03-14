@@ -17,6 +17,7 @@ def embedder() -> SentenceTransformerEmbedder:
     return SentenceTransformerEmbedder()
 
 
+@pytest.mark.spec("REQ-storage.embeddings")
 def test_produces_vectors(embedder: SentenceTransformerEmbedder):
     """embed() returns a numpy array with one row per input."""
     import numpy as np
@@ -26,6 +27,7 @@ def test_produces_vectors(embedder: SentenceTransformerEmbedder):
     assert vecs.shape[0] == 1
 
 
+@pytest.mark.spec("REQ-storage.embeddings")
 def test_correct_dimension(
     embedder: SentenceTransformerEmbedder,
 ):
@@ -34,6 +36,7 @@ def test_correct_dimension(
     assert vecs.shape[1] == embedder.dim()
 
 
+@pytest.mark.spec("REQ-storage.embeddings")
 def test_batch(embedder: SentenceTransformerEmbedder):
     """Batch of texts produces matching number of vectors."""
     texts = ["one", "two", "three"]
@@ -42,6 +45,7 @@ def test_batch(embedder: SentenceTransformerEmbedder):
     assert vecs.shape[1] == embedder.dim()
 
 
+@pytest.mark.spec("REQ-storage.embeddings")
 def test_empty_input(embedder: SentenceTransformerEmbedder):
     """Empty list produces an empty array."""
     import numpy as np
@@ -51,6 +55,7 @@ def test_empty_input(embedder: SentenceTransformerEmbedder):
     assert vecs.shape[0] == 0
 
 
+@pytest.mark.spec("REQ-storage.embeddings")
 def test_missing_dep(monkeypatch: pytest.MonkeyPatch):
     """Import error is raised with a helpful message."""
     import builtins
@@ -67,6 +72,7 @@ def test_missing_dep(monkeypatch: pytest.MonkeyPatch):
         SentenceTransformerEmbedder()
 
 
+@pytest.mark.spec("REQ-storage.embeddings")
 def test_embedder_abc_cannot_instantiate():
     """Embedder ABC cannot be instantiated directly."""
     with pytest.raises(TypeError):

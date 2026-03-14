@@ -2,39 +2,85 @@
 
 from __future__ import annotations
 
-from unittest import mock
+import importlib
+from typing import Any, List, Optional
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.channels._stubs import ChannelStatus
 from openjarvis.cli import cli
 
+_channel_cmd = importlib.import_module("openjarvis.cli.channel_cmd")
+
+
+# ---------------------------------------------------------------------------
+# Typed fakes (replacing MagicMock)
+# ---------------------------------------------------------------------------
+
+
+class _FakeConfig:
+    """Typed fake for JarvisConfig used by channel commands."""
+
+    class _ChannelSection:
+        default_channel: str = ""
+
+    channel = _ChannelSection()
+
+
+class _FakeBridge:
+    """Typed fake for channel bridge used by channel commands."""
+
+    def __init__(
+        self,
+        channels: Optional[List[str]] = None,
+        send_ok: bool = True,
+        status_val: ChannelStatus = ChannelStatus.DISCONNECTED,
+        list_error: Optional[Exception] = None,
+    ) -> None:
+        self._channels = channels or []
+        self._send_ok = send_ok
+        self._status_val = status_val
+        self._list_error = list_error
+
+    def list_channels(self) -> List[str]:
+        if self._list_error is not None:
+            raise self._list_error
+        return self._channels
+
+    def send(self, channel: str, content: str, **kwargs: Any) -> bool:
+        return self._send_ok
+
+    def status(self, **kwargs: Any) -> ChannelStatus:
+        return self._status_val
+
 
 def _patch_channel(
+    monkeypatch,
     list_channels=None,
     send_return=True,
     status_return=ChannelStatus.DISCONNECTED,
+    list_error=None,
 ):
-    """Return patches for load_config and _get_channel."""
-    cfg = mock.MagicMock()
-    cfg.channel.default_channel = ""
-
-    bridge_instance = mock.MagicMock()
-    bridge_instance.list_channels.return_value = list_channels or []
-    bridge_instance.send.return_value = send_return
-    bridge_instance.status.return_value = status_return
-
-    config_patch = mock.patch(
-        "openjarvis.core.config.load_config", return_value=cfg,
+    """Patch channel_cmd with typed fakes via monkeypatch."""
+    cfg = _FakeConfig()
+    bridge = _FakeBridge(
+        channels=list_channels,
+        send_ok=send_return,
+        status_val=status_return,
+        list_error=list_error,
     )
-    get_channel_patch = mock.patch(
-        "openjarvis.cli.channel_cmd._get_channel",
-        return_value=bridge_instance,
+    monkeypatch.setattr(
+        "openjarvis.core.config.load_config", lambda: cfg,
     )
-    return config_patch, get_channel_patch, bridge_instance
+    monkeypatch.setattr(
+        _channel_cmd, "_get_channel", lambda *a, **kw: bridge,
+    )
+    return bridge
 
 
 class TestChannelHelp:
+    @pytest.mark.spec("REQ-cli.channel")
     def test_subcommands_in_help(self) -> None:
         result = CliRunner().invoke(cli, ["channel", "--help"])
         assert result.exit_code == 0
@@ -44,58 +90,61 @@ class TestChannelHelp:
 
 
 class TestChannelList:
-    def test_list_with_channels(self) -> None:
-        config_p, getch_p, _ = _patch_channel(
-            list_channels=["slack", "discord"],
+    @pytest.mark.spec("REQ-cli.channel")
+    def test_list_with_channels(self, monkeypatch) -> None:
+        _patch_channel(
+            monkeypatch, list_channels=["slack", "discord"],
         )
-        with config_p, getch_p:
-            result = CliRunner().invoke(cli, ["channel", "list"])
+        result = CliRunner().invoke(cli, ["channel", "list"])
         assert result.exit_code == 0
         assert "slack" in result.output
         assert "discord" in result.output
 
-    def test_list_no_channels(self) -> None:
-        config_p, getch_p, _ = _patch_channel(list_channels=[])
-        with config_p, getch_p:
-            result = CliRunner().invoke(cli, ["channel", "list"])
+    @pytest.mark.spec("REQ-cli.channel")
+    def test_list_no_channels(self, monkeypatch) -> None:
+        _patch_channel(monkeypatch, list_channels=[])
+        result = CliRunner().invoke(cli, ["channel", "list"])
         assert result.exit_code == 0
         assert "No channels available" in result.output
 
-    def test_list_connection_error(self) -> None:
-        config_p, getch_p, inst = _patch_channel()
-        inst.list_channels.side_effect = ConnectionError("refused")
-        with config_p, getch_p:
-            result = CliRunner().invoke(cli, ["channel", "list"])
+    @pytest.mark.spec("REQ-cli.channel")
+    def test_list_connection_error(self, monkeypatch) -> None:
+        _patch_channel(
+            monkeypatch,
+            list_error=ConnectionError("refused"),
+        )
+        result = CliRunner().invoke(cli, ["channel", "list"])
         assert result.exit_code == 0
         assert "Failed" in result.output or "refused" in result.output
 
 
 class TestChannelSend:
-    def test_send_success(self) -> None:
-        config_p, getch_p, _ = _patch_channel(send_return=True)
-        with config_p, getch_p:
-            result = CliRunner().invoke(
-                cli, ["channel", "send", "slack", "Hello!"],
-            )
+    @pytest.mark.spec("REQ-cli.channel")
+    def test_send_success(self, monkeypatch) -> None:
+        _patch_channel(monkeypatch, send_return=True)
+        result = CliRunner().invoke(
+            cli, ["channel", "send", "slack", "Hello!"],
+        )
         assert result.exit_code == 0
         assert "Message sent" in result.output
 
-    def test_send_failure(self) -> None:
-        config_p, getch_p, _ = _patch_channel(send_return=False)
-        with config_p, getch_p:
-            result = CliRunner().invoke(
-                cli, ["channel", "send", "slack", "Hello!"],
-            )
+    @pytest.mark.spec("REQ-cli.channel")
+    def test_send_failure(self, monkeypatch) -> None:
+        _patch_channel(monkeypatch, send_return=False)
+        result = CliRunner().invoke(
+            cli, ["channel", "send", "slack", "Hello!"],
+        )
         assert result.exit_code == 0
         assert "Failed to send" in result.output
 
 
 class TestChannelStatus:
-    def test_status_shows_info(self) -> None:
-        config_p, getch_p, _ = _patch_channel(
+    @pytest.mark.spec("REQ-cli.channel")
+    def test_status_shows_info(self, monkeypatch) -> None:
+        _patch_channel(
+            monkeypatch,
             status_return=ChannelStatus.DISCONNECTED,
         )
-        with config_p, getch_p:
-            result = CliRunner().invoke(cli, ["channel", "status"])
+        result = CliRunner().invoke(cli, ["channel", "status"])
         assert result.exit_code == 0
         assert "disconnected" in result.output

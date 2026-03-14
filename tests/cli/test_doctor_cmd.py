@@ -3,20 +3,25 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.cli import cli
 from openjarvis.cli.doctor_cmd import (
+    CheckResult,
     _check_config_exists,
     _check_nodejs,
     _check_python_version,
 )
+from openjarvis.core.config import JarvisConfig
+from tests.fixtures.engines import FakeEngine
 
 
 class TestDoctorHelp:
+    @pytest.mark.spec("REQ-cli.doctor")
     def test_doctor_help(self) -> None:
         result = CliRunner().invoke(cli, ["doctor", "--help"])
         assert result.exit_code == 0
@@ -25,53 +30,53 @@ class TestDoctorHelp:
 
 
 class TestDoctorRuns:
-    def test_doctor_runs(self) -> None:
+    @pytest.mark.spec("REQ-cli.doctor")
+    def test_doctor_runs(self, monkeypatch) -> None:
         """Doctor command runs without error when engines are mocked."""
-        mock_config = MagicMock()
-        mock_config.intelligence.default_model = ""
+        cfg = JarvisConfig()
+        cfg.intelligence.default_model = ""
 
-        with (
-            patch(
-                "openjarvis.cli.doctor_cmd.load_config", return_value=mock_config
-            ),
-            patch(
-                "openjarvis.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
-                Path("/tmp/nonexistent/config.toml"),
-            ),
-            patch(
-                "openjarvis.cli.doctor_cmd._check_engines", return_value=[]
-            ),
-            patch(
-                "openjarvis.cli.doctor_cmd._check_models", return_value=[]
-            ),
-        ):
-            result = CliRunner().invoke(cli, ["doctor"])
+        monkeypatch.setattr(
+            "openjarvis.cli.doctor_cmd.load_config", lambda: cfg,
+        )
+        monkeypatch.setattr(
+            "openjarvis.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
+            Path("/tmp/nonexistent/config.toml"),
+        )
+        monkeypatch.setattr(
+            "openjarvis.cli.doctor_cmd._check_engines", lambda: [],
+        )
+        monkeypatch.setattr(
+            "openjarvis.cli.doctor_cmd._check_models", lambda: [],
+        )
+
+        result = CliRunner().invoke(cli, ["doctor"])
         assert result.exit_code == 0
         assert "Doctor" in result.output or "passed" in result.output
 
 
 class TestDoctorJsonOutput:
-    def test_doctor_json_output(self) -> None:
+    @pytest.mark.spec("REQ-cli.doctor")
+    def test_doctor_json_output(self, monkeypatch) -> None:
         """--json flag produces valid JSON."""
-        mock_config = MagicMock()
-        mock_config.intelligence.default_model = ""
+        cfg = JarvisConfig()
+        cfg.intelligence.default_model = ""
 
-        with (
-            patch(
-                "openjarvis.cli.doctor_cmd.load_config", return_value=mock_config
-            ),
-            patch(
-                "openjarvis.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
-                Path("/tmp/nonexistent/config.toml"),
-            ),
-            patch(
-                "openjarvis.cli.doctor_cmd._check_engines", return_value=[]
-            ),
-            patch(
-                "openjarvis.cli.doctor_cmd._check_models", return_value=[]
-            ),
-        ):
-            result = CliRunner().invoke(cli, ["doctor", "--json"])
+        monkeypatch.setattr(
+            "openjarvis.cli.doctor_cmd.load_config", lambda: cfg,
+        )
+        monkeypatch.setattr(
+            "openjarvis.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
+            Path("/tmp/nonexistent/config.toml"),
+        )
+        monkeypatch.setattr(
+            "openjarvis.cli.doctor_cmd._check_engines", lambda: [],
+        )
+        monkeypatch.setattr(
+            "openjarvis.cli.doctor_cmd._check_models", lambda: [],
+        )
+
+        result = CliRunner().invoke(cli, ["doctor", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, list)
@@ -84,6 +89,7 @@ class TestDoctorJsonOutput:
 
 
 class TestCheckPythonVersion:
+    @pytest.mark.spec("REQ-cli.doctor")
     def test_check_python_version(self) -> None:
         """Python version check passes on any supported Python."""
         result = _check_python_version()
@@ -92,41 +98,37 @@ class TestCheckPythonVersion:
 
 
 class TestCheckConfigMissing:
-    def test_check_config_missing(self) -> None:
+    @pytest.mark.spec("REQ-cli.doctor")
+    def test_check_config_missing(self, monkeypatch) -> None:
         """Warning when config file does not exist."""
-        with patch(
+        monkeypatch.setattr(
             "openjarvis.cli.doctor_cmd.DEFAULT_CONFIG_PATH",
             Path("/tmp/nonexistent/config.toml"),
-        ):
-            result = _check_config_exists()
+        )
+        result = _check_config_exists()
         assert result.status == "warn"
         assert "Not found" in result.message
 
 
 class TestCheckEngineProbing:
+    @pytest.mark.spec("REQ-cli.doctor")
     def test_check_engine_probing(self) -> None:
         """Engine health check reports reachable/unreachable engines."""
-        from openjarvis.cli.doctor_cmd import CheckResult
+        engine_healthy = FakeEngine(engine_id="ollama", healthy=True)
+        engine_down = FakeEngine(engine_id="vllm", healthy=False)
 
-        mock_engine_healthy = MagicMock()
-        mock_engine_healthy.health.return_value = True
-
-        mock_engine_down = MagicMock()
-        mock_engine_down.health.return_value = False
-
-        def mock_make_engine(key, config):
+        def make_engine(key):
             if key == "ollama":
-                return mock_engine_healthy
-            return mock_engine_down
+                return engine_healthy
+            return engine_down
 
         # Directly test the engine probing logic without calling _check_engines
         # to avoid complex module-level mock interactions
-        mock_config = MagicMock()
         keys = ["ollama", "vllm"]
 
         results = []
         for key in sorted(keys):
-            engine = mock_make_engine(key, mock_config)
+            engine = make_engine(key)
             if engine.health():
                 results.append(
                     CheckResult(f"Engine: {key}", "ok", "Reachable")
@@ -147,22 +149,31 @@ class TestCheckEngineProbing:
 
 
 class TestCheckNodejs:
-    def test_check_nodejs_found(self) -> None:
+    @pytest.mark.spec("REQ-cli.doctor")
+    def test_check_nodejs_found(self, monkeypatch) -> None:
         """Node.js check reports version when node is available."""
-        with (
-            patch("shutil.which", return_value="/usr/bin/node"),
-            patch(
-                "subprocess.run",
-                return_value=MagicMock(stdout="v22.5.0\n"),
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: "/usr/bin/node",
+        )
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: subprocess runs external binary
+            "subprocess.run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                args=["node", "--version"],
+                returncode=0,
+                stdout="v22.5.0\n",
+                stderr="",
             ),
-        ):
-            result = _check_nodejs()
+        )
+        result = _check_nodejs()
         assert result.status == "ok"
         assert "v22.5.0" in result.message
 
-    def test_check_nodejs_not_found(self) -> None:
+    @pytest.mark.spec("REQ-cli.doctor")
+    def test_check_nodejs_not_found(self, monkeypatch) -> None:
         """Node.js check warns when node is not installed."""
-        with patch("shutil.which", return_value=None):
-            result = _check_nodejs()
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: None,
+        )
+        result = _check_nodejs()
         assert result.status == "warn"
         assert "Not found" in result.message

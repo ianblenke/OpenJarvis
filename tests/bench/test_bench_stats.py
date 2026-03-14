@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from io import StringIO
-from unittest.mock import MagicMock
 
 from rich.console import Console
 
 from openjarvis.bench._stubs import BenchmarkResult
 from openjarvis.cli.bench_cmd import _render_stats_table
+from tests.fixtures.engines import FakeEngine
 
 
 class TestLatencyBenchmarkStats:
@@ -17,9 +17,7 @@ class TestLatencyBenchmarkStats:
         from openjarvis.bench.latency import LatencyBenchmark
 
         bench = LatencyBenchmark()
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.return_value = {"content": "hi", "usage": {}}
+        engine = FakeEngine(engine_id="mock", responses=["hi"])
         result = bench.run(engine, model="test", num_samples=5)
         assert "std_latency" in result.metrics
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.core.events import EventBus, EventType
 
 
@@ -12,6 +14,7 @@ class TestLoopGuard:
         bus = EventBus(record_history=True)
         return LoopGuard(config, bus=bus), bus
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_identical_calls_blocked(self):
         guard, bus = self._make_guard(max_identical_calls=2)
         v1 = guard.check_call("calc", '{"x": 1}')
@@ -21,6 +24,7 @@ class TestLoopGuard:
         assert v2.blocked
         assert "identical" in v2.reason.lower()
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_different_args_not_blocked(self):
         guard, _ = self._make_guard(max_identical_calls=2)
         guard.check_call("calc", '{"x": 1}')
@@ -28,6 +32,7 @@ class TestLoopGuard:
         v = guard.check_call("calc", '{"x": 2}')
         assert not v.blocked
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_ping_pong_detection(self):
         guard, _ = self._make_guard(ping_pong_window=4, poll_tool_budget=100)
         guard.check_call("A", "{}")
@@ -40,6 +45,7 @@ class TestLoopGuard:
         # The sequence [A, B, A, B, A] with window=4 should detect A-B-A-B
         # But detection happens after 4+ calls in sequence
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_poll_budget_exceeded(self):
         guard, _ = self._make_guard(poll_tool_budget=3, max_identical_calls=100)
         guard.check_call("poll", '{"a": 1}')
@@ -49,6 +55,7 @@ class TestLoopGuard:
         assert v.blocked
         assert "poll budget" in v.reason.lower()
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_event_emitted(self):
         guard, bus = self._make_guard(max_identical_calls=1)
         guard.check_call("x", '{"a": 1}')
@@ -59,6 +66,7 @@ class TestLoopGuard:
         ]
         assert len(events) == 1
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_reset(self):
         guard, _ = self._make_guard(max_identical_calls=2)
         guard.check_call("x", '{"a": 1}')
@@ -67,6 +75,7 @@ class TestLoopGuard:
         v = guard.check_call("x", '{"a": 1}')
         assert not v.blocked
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_context_compression_no_overflow(self):
         from openjarvis.core.types import Message, Role
         guard, _ = self._make_guard(max_context_messages=100)
@@ -74,6 +83,7 @@ class TestLoopGuard:
         result = guard.compress_context(messages)
         assert len(result) == 10
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_context_compression_with_overflow(self):
         from openjarvis.core.types import Message, Role
         guard, _ = self._make_guard(max_context_messages=10)
@@ -89,6 +99,7 @@ class TestLoopGuard:
         result = guard.compress_context(messages)
         assert len(result) <= 10
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_context_compression_stage4_uses_current_state(self):
         """Stage 4 should derive from compressed state."""
         from openjarvis.core.types import Message, Role
@@ -114,11 +125,13 @@ class TestLoopGuard:
         )
         assert system_count == 1
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_check_response_returns_unblocked(self):
         guard, _ = self._make_guard()
         v = guard.check_response("some content")
         assert not v.blocked
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_disabled_loop_guard(self):
         from openjarvis.agents.loop_guard import LoopGuard, LoopGuardConfig
         config = LoopGuardConfig(enabled=False)

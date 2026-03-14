@@ -4,25 +4,31 @@ from __future__ import annotations
 
 import threading
 
+import pytest
+
 from openjarvis.evals.core.event_recorder import AgentEvent, EventRecorder, EventType
 
 
 class TestEventType:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_enum_values(self):
         assert EventType.LM_INFERENCE_START == "lm_inference_start"
         assert EventType.TOOL_CALL_END == "tool_call_end"
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_all_types_exist(self):
         assert len(EventType) == 10
 
 
 class TestAgentEvent:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_creation(self):
         e = AgentEvent(event_type="test", timestamp=123.456, metadata={"key": "val"})
         assert e.event_type == "test"
         assert e.timestamp == 123.456
         assert e.metadata == {"key": "val"}
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_repr(self):
         e = AgentEvent(event_type="test", timestamp=1.0)
         r = repr(e)
@@ -31,6 +37,7 @@ class TestAgentEvent:
 
 
 class TestEventRecorder:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_record_and_get(self):
         rec = EventRecorder()
         rec.record("tool_call_start", tool="calc")
@@ -41,12 +48,14 @@ class TestEventRecorder:
         assert events[0].metadata["tool"] == "calc"
         assert events[1].event_type == "tool_call_end"
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_len(self):
         rec = EventRecorder()
         assert len(rec) == 0
         rec.record("test")
         assert len(rec) == 1
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_clear(self):
         rec = EventRecorder()
         rec.record("test")
@@ -54,6 +63,7 @@ class TestEventRecorder:
         assert len(rec) == 0
         assert rec.get_events() == []
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_get_events_returns_copy(self):
         rec = EventRecorder()
         rec.record("test")
@@ -61,6 +71,7 @@ class TestEventRecorder:
         events.clear()
         assert len(rec) == 1
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_timestamps_monotonic(self):
         rec = EventRecorder()
         for _ in range(10):
@@ -69,6 +80,7 @@ class TestEventRecorder:
         for i in range(1, len(events)):
             assert events[i].timestamp >= events[i - 1].timestamp
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_thread_safety(self):
         rec = EventRecorder()
         barrier = threading.Barrier(4)

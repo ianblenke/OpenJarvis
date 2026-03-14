@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.telemetry.session import (
     TelemetrySample,
     TelemetrySession,
@@ -10,18 +12,21 @@ from openjarvis.telemetry.session import (
 
 
 class TestPythonRingBuffer:
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_push_and_len(self):
         buf = _PythonRingBuffer(capacity=10)
         assert len(buf) == 0
         buf.push(TelemetrySample(timestamp_ns=100))
         assert len(buf) == 1
 
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_capacity_overflow(self):
         buf = _PythonRingBuffer(capacity=3)
         for i in range(5):
             buf.push(TelemetrySample(timestamp_ns=i * 100))
         assert len(buf) == 3
 
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_window(self):
         buf = _PythonRingBuffer(capacity=100)
         for i in range(10):
@@ -29,12 +34,14 @@ class TestPythonRingBuffer:
         result = buf.window(2000, 6000)
         assert len(result) == 5  # 2000, 3000, 4000, 5000, 6000
 
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_clear(self):
         buf = _PythonRingBuffer(capacity=10)
         buf.push(TelemetrySample(timestamp_ns=1))
         buf.clear()
         assert len(buf) == 0
 
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_energy_delta_trapezoidal(self):
         """Trapezoidal integration over constant power should yield P*t."""
         buf = _PythonRingBuffer(capacity=100)
@@ -49,6 +56,7 @@ class TestPythonRingBuffer:
         assert abs(gpu_j - 100.0) < 1.0  # 100W * 1s = 100J
         assert abs(cpu_j - 50.0) < 1.0   # 50W * 1s = 50J
 
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_energy_delta_insufficient_samples(self):
         buf = _PythonRingBuffer(capacity=100)
         buf.push(TelemetrySample(timestamp_ns=0, gpu_power_w=100.0))
@@ -56,6 +64,7 @@ class TestPythonRingBuffer:
         assert gpu_j == 0.0
         assert cpu_j == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_avg_power(self):
         buf = _PythonRingBuffer(capacity=100)
         buf.push(TelemetrySample(timestamp_ns=0, gpu_power_w=100.0, cpu_power_w=40.0))
@@ -69,6 +78,7 @@ class TestPythonRingBuffer:
 
 
 class TestTelemetrySession:
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_noop_session(self):
         """Session with no monitor should be a safe no-op."""
         session = TelemetrySession(monitor=None)
@@ -79,11 +89,13 @@ class TestTelemetrySession:
             assert gpu_j == 0.0
             assert cpu_j == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_context_manager(self):
         session = TelemetrySession(monitor=None)
         with session as s:
             assert s is session
 
+    @pytest.mark.spec("REQ-telemetry.store")
     def test_start_stop(self):
         session = TelemetrySession(monitor=None)
         session.start()

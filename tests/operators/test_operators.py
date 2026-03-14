@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -38,16 +38,22 @@ class FakeEngine:
         return True
 
 
+@dataclass
+class _FakeSession:
+    """Typed stand-in for a session object."""
+    messages: List[Dict] = field(default_factory=list)
+
+
 class FakeSessionStore:
     """Minimal session store stub."""
 
     def __init__(self) -> None:
-        self._sessions: Dict[str, Any] = {}
+        self._sessions: Dict[str, _FakeSession] = {}
         self._messages: Dict[str, List[Dict]] = {}
 
     def get_or_create(self, session_id: str):
         if session_id not in self._sessions:
-            self._sessions[session_id] = MagicMock(messages=[])
+            self._sessions[session_id] = _FakeSession()
         return self._sessions[session_id]
 
     def save_message(self, session_id: str, message: Dict) -> None:
@@ -102,28 +108,51 @@ class FakeSchedulerStore:
         return [r for r in self._runs if r.get("task_id") == task_id][:limit]
 
 
+class _FakeSystem:
+    """Typed stand-in for JarvisSystem used by OperatorManager tests."""
+
+    def __init__(
+        self,
+        engine=None,
+        scheduler=None,
+        session_store=None,
+        memory_backend=None,
+    ) -> None:
+        from openjarvis.core.config import JarvisConfig
+        from openjarvis.core.events import EventBus
+
+        self.config = JarvisConfig()
+        self.bus = EventBus()
+        self.engine = engine or FakeEngine()
+        self.engine_key = "test"
+        self.model = "test-model"
+        self.tools: List[Any] = []
+        self.scheduler = scheduler
+        self.session_store = session_store
+        self.memory_backend = memory_backend
+        self.operator_manager = None
+        # Track ask() calls
+        self._ask_calls: List[Dict[str, Any]] = []
+        self._ask_result: Any = {"content": "OK"}
+
+    def ask(self, query, **kwargs):
+        self._ask_calls.append({"query": query, **kwargs})
+        return self._ask_result
+
+
 def _make_system(
     engine=None,
     scheduler=None,
     session_store=None,
     memory_backend=None,
 ):
-    """Build a minimal mock JarvisSystem."""
-    from openjarvis.core.config import JarvisConfig
-    from openjarvis.core.events import EventBus
-
-    system = MagicMock()
-    system.config = JarvisConfig()
-    system.bus = EventBus()
-    system.engine = engine or FakeEngine()
-    system.engine_key = "test"
-    system.model = "test-model"
-    system.tools = []
-    system.scheduler = scheduler
-    system.session_store = session_store
-    system.memory_backend = memory_backend
-    system.operator_manager = None
-    return system
+    """Build a minimal typed JarvisSystem stub."""
+    return _FakeSystem(
+        engine=engine,
+        scheduler=scheduler,
+        session_store=session_store,
+        memory_backend=memory_backend,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -448,7 +477,7 @@ name = "Discovered"
         from openjarvis.operators.manager import OperatorManager
 
         system = _make_system()
-        system.ask = MagicMock(return_value={"content": "Tick done."})
+        system._ask_result = {"content": "Tick done."}
 
         mgr = OperatorManager(system)
         m = OperatorManifest(
@@ -461,11 +490,11 @@ name = "Discovered"
         assert result == "Tick done."
 
         # Verify ask was called with correct params
-        system.ask.assert_called_once()
-        call_kwargs = system.ask.call_args
-        assert call_kwargs.kwargs["agent"] == "operative"
-        assert call_kwargs.kwargs["system_prompt"] == "Test prompt"
-        assert call_kwargs.kwargs["operator_id"] == "run_test"
+        assert len(system._ask_calls) == 1
+        call_kwargs = system._ask_calls[0]
+        assert call_kwargs["agent"] == "operative"
+        assert call_kwargs["system_prompt"] == "Test prompt"
+        assert call_kwargs["operator_id"] == "run_test"
 
 
 # ---------------------------------------------------------------------------
@@ -570,18 +599,32 @@ class TestOperativeAgent:
 
     def test_run_tool_loop(self):
         from openjarvis.agents.operative import OperativeAgent
-        from openjarvis.tools._stubs import BaseTool
+        from openjarvis.core.types import ToolResult
+        from openjarvis.tools._stubs import BaseTool, ToolSpec
 
-        # Mock tool
-        tool = MagicMock(spec=BaseTool)
-        tool.spec = MagicMock()
-        tool.spec.name = "think"
-        tool.spec.description = "Think about something"
-        tool.spec.parameters = {}
-        tool.spec.timeout_seconds = 30
-        tool.spec.required_capabilities = []
-        tool.spec.taint_labels = []
-        tool.run = MagicMock(return_value="Thought result")
+        class _FakeTool(BaseTool):
+            """Typed fake tool for testing tool-loop in operative agent."""
+            tool_id = "think"
+            run_count = 0
+
+            @property
+            def spec(self):
+                return ToolSpec(
+                    name="think",
+                    description="Think about something",
+                    parameters={},
+                    timeout_seconds=30,
+                )
+
+            def execute(self, **params):
+                self.run_count += 1
+                return ToolResult(
+                    tool_name="think",
+                    content="Thought result",
+                    success=True,
+                )
+
+        tool = _FakeTool()
 
         engine = FakeEngine([
             {
@@ -649,15 +692,25 @@ class TestOperativeAgent:
         ]
         engine = FakeEngine(responses)
 
-        tool = MagicMock()
-        tool.spec = MagicMock()
-        tool.spec.name = "think"
-        tool.spec.description = "Think"
-        tool.spec.parameters = {}
-        tool.spec.timeout_seconds = 30
-        tool.spec.required_capabilities = []
-        tool.spec.taint_labels = []
-        tool.run = MagicMock(return_value="thought")
+        from openjarvis.core.types import ToolResult
+        from openjarvis.tools._stubs import BaseTool, ToolSpec
+
+        class _FakeTool(BaseTool):
+            tool_id = "think"
+
+            @property
+            def spec(self):
+                return ToolSpec(
+                    name="think",
+                    description="Think",
+                    parameters={},
+                    timeout_seconds=30,
+                )
+
+            def execute(self, **params):
+                return ToolResult(tool_name="think", content="thought", success=True)
+
+        tool = _FakeTool()
 
         agent = OperativeAgent(
             engine, "test-model",
@@ -675,52 +728,57 @@ class TestOperativeAgent:
 
 
 class TestSystemAskPassthrough:
-    def test_system_prompt_forwarded(self):
+    def test_system_prompt_forwarded(self, monkeypatch):
         """system_prompt kwarg reaches the agent."""
         from openjarvis.system import JarvisSystem
 
-        engine = FakeEngine([{"content": "OK"}])
-        system = _make_system(engine=engine)
+        engine = FakeEngine(responses=["OK"])
 
-        # Patch _run_agent to capture kwargs
-        captured = {}
+        captured: Dict[str, Any] = {}
 
         def patched_run_agent(self, query, messages, agent_name, tool_names,
                               temperature, max_tokens, **kwargs):
             captured.update(kwargs)
             return {"content": "OK"}
 
-        with patch.object(JarvisSystem, "_run_agent", patched_run_agent):
-            real_system = JarvisSystem(
-                config=system.config, bus=system.bus,
-                engine=engine, engine_key="test", model="test-model",
-                agent_name="operative",
-            )
-            real_system.ask("test", system_prompt="Custom prompt")
+        monkeypatch.setattr(JarvisSystem, "_run_agent", patched_run_agent)
+
+        from openjarvis.core.config import JarvisConfig
+        from openjarvis.core.events import EventBus
+
+        real_system = JarvisSystem(
+            config=JarvisConfig(), bus=EventBus(),
+            engine=engine, engine_key="test", model="test-model",
+            agent_name="operative",
+        )
+        real_system.ask("test", system_prompt="Custom prompt")
 
         assert captured.get("system_prompt") == "Custom prompt"
 
-    def test_operator_id_forwarded(self):
+    def test_operator_id_forwarded(self, monkeypatch):
         """operator_id kwarg reaches the agent."""
         from openjarvis.system import JarvisSystem
 
-        engine = FakeEngine([{"content": "OK"}])
-        system = _make_system(engine=engine)
+        engine = FakeEngine(responses=["OK"])
 
-        captured = {}
+        captured: Dict[str, Any] = {}
 
         def patched_run_agent(self, query, messages, agent_name, tool_names,
                               temperature, max_tokens, **kwargs):
             captured.update(kwargs)
             return {"content": "OK"}
 
-        with patch.object(JarvisSystem, "_run_agent", patched_run_agent):
-            real_system = JarvisSystem(
-                config=system.config, bus=system.bus,
-                engine=engine, engine_key="test", model="test-model",
-                agent_name="operative",
-            )
-            real_system.ask("test", operator_id="my_op")
+        monkeypatch.setattr(JarvisSystem, "_run_agent", patched_run_agent)
+
+        from openjarvis.core.config import JarvisConfig
+        from openjarvis.core.events import EventBus
+
+        real_system = JarvisSystem(
+            config=JarvisConfig(), bus=EventBus(),
+            engine=engine, engine_key="test", model="test-model",
+            agent_name="operative",
+        )
+        real_system.ask("test", operator_id="my_op")
 
         assert captured.get("operator_id") == "my_op"
 
@@ -736,10 +794,10 @@ class TestSchedulerOperatorExecution:
         from openjarvis.scheduler.scheduler import ScheduledTask, TaskScheduler
 
         store = FakeSchedulerStore()
-        mock_system = MagicMock()
-        mock_system.ask = MagicMock(return_value="Tick result")
+        fake_system = _FakeSystem()
+        fake_system._ask_result = "Tick result"
 
-        scheduler = TaskScheduler(store, system=mock_system)
+        scheduler = TaskScheduler(store, system=fake_system)
 
         task = ScheduledTask(
             id="operator:test_op",
@@ -759,11 +817,9 @@ class TestSchedulerOperatorExecution:
         scheduler._execute_task(task)
 
         # Verify system.ask was called
-        mock_system.ask.assert_called_once()
-        call_kwargs = mock_system.ask.call_args
-        # The scheduler passes agent and tools
-        assert call_kwargs.kwargs.get("agent") == "operative" or \
-            call_kwargs[1].get("agent") == "operative"
+        assert len(fake_system._ask_calls) == 1
+        call_kwargs = fake_system._ask_calls[0]
+        assert call_kwargs.get("agent") == "operative"
 
 
 # ---------------------------------------------------------------------------

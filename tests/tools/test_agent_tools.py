@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from openjarvis.tools.agent_tools import (
     _SPAWNED_AGENTS,
     AgentKillTool,
@@ -21,6 +23,7 @@ class TestAgentSpawnTool:
     def setup_method(self):
         _SPAWNED_AGENTS.clear()
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spec(self):
         tool = AgentSpawnTool()
         spec = tool.spec
@@ -29,6 +32,7 @@ class TestAgentSpawnTool:
         assert "system:admin" in spec.required_capabilities
         assert "agent_type" in spec.parameters["required"]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spawn_creates_agent_entry(self):
         tool = AgentSpawnTool()
         result = tool.execute(agent_type="simple")
@@ -38,6 +42,7 @@ class TestAgentSpawnTool:
         assert data["status"] == "running"
         assert data["agent_id"] in _SPAWNED_AGENTS
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spawn_with_custom_id(self):
         tool = AgentSpawnTool()
         result = tool.execute(agent_type="orchestrator", agent_id="my-agent-1")
@@ -46,6 +51,7 @@ class TestAgentSpawnTool:
         assert data["agent_id"] == "my-agent-1"
         assert "my-agent-1" in _SPAWNED_AGENTS
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spawn_with_query(self):
         tool = AgentSpawnTool()
         result = tool.execute(agent_type="native_react", query="Hello world")
@@ -53,6 +59,7 @@ class TestAgentSpawnTool:
         data = json.loads(result.content)
         assert data["initial_query"] == "Hello world"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spawn_with_tools(self):
         tool = AgentSpawnTool()
         result = tool.execute(
@@ -63,18 +70,21 @@ class TestAgentSpawnTool:
         agent_id = json.loads(result.content)["agent_id"]
         assert _SPAWNED_AGENTS[agent_id]["tools"] == "calculator,think"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spawn_no_agent_type(self):
         tool = AgentSpawnTool()
         result = tool.execute()
         assert not result.success
         assert "agent_type" in result.content.lower()
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spawn_auto_generates_id(self):
         tool = AgentSpawnTool()
         result = tool.execute(agent_type="simple")
         data = json.loads(result.content)
         assert len(data["agent_id"]) > 0
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spawn_records_created_at(self):
         tool = AgentSpawnTool()
         tool.execute(agent_type="simple", agent_id="ts-test")
@@ -92,6 +102,7 @@ class TestAgentSendTool:
     def setup_method(self):
         _SPAWNED_AGENTS.clear()
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spec(self):
         tool = AgentSendTool()
         spec = tool.spec
@@ -101,12 +112,14 @@ class TestAgentSendTool:
         assert "agent_id" in spec.parameters["required"]
         assert "message" in spec.parameters["required"]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_send_to_nonexistent_agent_fails(self):
         tool = AgentSendTool()
         result = tool.execute(agent_id="no-such-agent", message="hi")
         assert not result.success
         assert "not found" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_send_to_valid_agent_succeeds(self):
         _SPAWNED_AGENTS["agent-x"] = {
             "agent_id": "agent-x",
@@ -121,11 +134,13 @@ class TestAgentSendTool:
         assert data["delivered"] is True
         assert data["message"] == "Hello agent"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_send_no_agent_id(self):
         tool = AgentSendTool()
         result = tool.execute(message="hi")
         assert not result.success
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_send_no_message(self):
         _SPAWNED_AGENTS["agent-y"] = {
             "agent_id": "agent-y",
@@ -148,6 +163,7 @@ class TestAgentListTool:
     def setup_method(self):
         _SPAWNED_AGENTS.clear()
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spec(self):
         tool = AgentListTool()
         spec = tool.spec
@@ -155,12 +171,14 @@ class TestAgentListTool:
         assert spec.category == "agents"
         assert "system:admin" in spec.required_capabilities
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_list_empty(self):
         tool = AgentListTool()
         result = tool.execute()
         assert result.success
         assert result.content == "No agents spawned."
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_list_after_spawn(self):
         _SPAWNED_AGENTS["a1"] = {
             "agent_id": "a1",
@@ -182,6 +200,7 @@ class TestAgentListTool:
         ids = {a["agent_id"] for a in data}
         assert ids == {"a1", "a2"}
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_list_shows_status(self):
         _SPAWNED_AGENTS["b1"] = {
             "agent_id": "b1",
@@ -205,6 +224,7 @@ class TestAgentKillTool:
     def setup_method(self):
         _SPAWNED_AGENTS.clear()
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spec(self):
         tool = AgentKillTool()
         spec = tool.spec
@@ -214,12 +234,14 @@ class TestAgentKillTool:
         assert "system:admin" in spec.required_capabilities
         assert "agent_id" in spec.parameters["required"]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_kill_nonexistent_fails(self):
         tool = AgentKillTool()
         result = tool.execute(agent_id="ghost")
         assert not result.success
         assert "not found" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_kill_marks_stopped(self):
         _SPAWNED_AGENTS["k1"] = {
             "agent_id": "k1",
@@ -234,6 +256,7 @@ class TestAgentKillTool:
         assert data["status"] == "stopped"
         assert _SPAWNED_AGENTS["k1"]["status"] == "stopped"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_kill_already_stopped(self):
         _SPAWNED_AGENTS["k2"] = {
             "agent_id": "k2",
@@ -246,6 +269,7 @@ class TestAgentKillTool:
         assert result.success
         assert _SPAWNED_AGENTS["k2"]["status"] == "stopped"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_kill_no_agent_id(self):
         tool = AgentKillTool()
         result = tool.execute()

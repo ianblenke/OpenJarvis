@@ -51,6 +51,7 @@ def _ollama_response(
 
 @pytest.mark.parametrize("model_id", NEW_MODELS)
 class TestOllamaGenerate:
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_generate_basic(self, respx_mock, model_id: str) -> None:
         engine = _make_engine()
         respx_mock.post(f"{OLLAMA_HOST}/api/chat").mock(
@@ -67,6 +68,7 @@ class TestOllamaGenerate:
         assert result["usage"]["completion_tokens"] == 5
         assert result["usage"]["total_tokens"] == 15
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_generate_with_tools(self, respx_mock, model_id: str) -> None:
         engine = _make_engine()
         tool_calls = [
@@ -94,6 +96,7 @@ class TestOllamaGenerate:
         assert result["tool_calls"][0]["name"] == "calculator"
         assert result["tool_calls"][0]["id"] == "call_0"
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_generate_with_multiple_tool_calls(self, respx_mock, model_id: str) -> None:
         engine = _make_engine()
         tool_calls = [
@@ -116,6 +119,7 @@ class TestOllamaGenerate:
         assert result["tool_calls"][0]["name"] == "tool_a"
         assert result["tool_calls"][1]["name"] == "tool_b"
 
+    @pytest.mark.spec("REQ-engine.protocol.stream")
     def test_generate_streaming(self, respx_mock, model_id: str) -> None:
         engine = _make_engine()
         lines = [
@@ -146,6 +150,7 @@ class TestOllamaGenerate:
 
 
 class TestOllamaModelDiscovery:
+    @pytest.mark.spec("REQ-engine.protocol.list-models")
     def test_list_models(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.get(f"{OLLAMA_HOST}/api/tags").mock(
@@ -157,6 +162,7 @@ class TestOllamaModelDiscovery:
         models = engine.list_models()
         assert models == NEW_MODELS
 
+    @pytest.mark.spec("REQ-engine.protocol.list-models")
     def test_list_models_empty(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.get(f"{OLLAMA_HOST}/api/tags").mock(
@@ -164,6 +170,7 @@ class TestOllamaModelDiscovery:
         )
         assert engine.list_models() == []
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_list_models_connection_error(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.get(f"{OLLAMA_HOST}/api/tags").mock(
@@ -171,6 +178,7 @@ class TestOllamaModelDiscovery:
         )
         assert engine.list_models() == []
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_healthy(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.get(f"{OLLAMA_HOST}/api/tags").mock(
@@ -178,6 +186,7 @@ class TestOllamaModelDiscovery:
         )
         assert engine.health() is True
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_unhealthy(self) -> None:
         engine = _make_engine()
         with respx.mock:
@@ -193,6 +202,7 @@ class TestOllamaModelDiscovery:
 
 
 class TestOllamaErrors:
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_connection_refused(self) -> None:
         engine = _make_engine()
         with respx.mock:
@@ -204,6 +214,7 @@ class TestOllamaErrors:
                     [Message(role=Role.USER, content="Hi")], model="qwen3:8b"
                 )
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_timeout_raises_connection_error(self) -> None:
         engine = _make_engine()
         with respx.mock:
@@ -215,6 +226,7 @@ class TestOllamaErrors:
                     [Message(role=Role.USER, content="Hi")], model="qwen3:8b"
                 )
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_tools_payload_included(self, respx_mock) -> None:
         """Tools are included in the Ollama payload when provided."""
         engine = _make_engine()
@@ -234,6 +246,7 @@ class TestOllamaErrors:
         )
         assert "tools" in captured["body"]
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_no_tools_no_tools_key(self, respx_mock) -> None:
         """Without tools kwarg, payload has no tools key."""
         engine = _make_engine()

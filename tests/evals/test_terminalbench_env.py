@@ -13,18 +13,21 @@ terminal_bench = pytest.importorskip(
 
 
 class TestTerminalBenchTaskEnv:
+    @pytest.mark.spec("REQ-evals.environments")
     def test_init(self):
         metadata = {"task_id": "test-1"}
         env = TerminalBenchTaskEnv(metadata)
         assert env._metadata is metadata
         assert env._terminal is None
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_enter_without_task_raises(self):
         metadata = {"task_id": "test-1"}
         env = TerminalBenchTaskEnv(metadata)
         with pytest.raises(ValueError, match="Task metadata missing"):
             env.__enter__()
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_exit_cleans_metadata(self):
         metadata = {
             "task_id": "test-1",
@@ -38,6 +41,7 @@ class TestTerminalBenchTaskEnv:
         assert "session" not in metadata
         assert "container" not in metadata
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_run_tests_without_terminal(self):
         metadata = {"task": "mock_task", "task_paths": "mock_paths"}
         env = TerminalBenchTaskEnv(metadata)

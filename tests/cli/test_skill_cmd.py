@@ -2,24 +2,29 @@
 
 from __future__ import annotations
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.cli import cli
 
 
 class TestSkillCmd:
+    @pytest.mark.spec("REQ-cli.ask")
     def test_skill_list_help(self) -> None:
         result = CliRunner().invoke(cli, ["skill", "list", "--help"])
         assert result.exit_code == 0
 
+    @pytest.mark.spec("REQ-cli.ask")
     def test_skill_install_help(self) -> None:
         result = CliRunner().invoke(cli, ["skill", "install", "--help"])
         assert result.exit_code == 0
 
+    @pytest.mark.spec("REQ-cli.ask")
     def test_skill_search_help(self) -> None:
         result = CliRunner().invoke(cli, ["skill", "search", "--help"])
         assert result.exit_code == 0
 
+    @pytest.mark.spec("REQ-cli.ask")
     def test_skill_group_help(self) -> None:
         result = CliRunner().invoke(cli, ["skill", "--help"])
         assert result.exit_code == 0

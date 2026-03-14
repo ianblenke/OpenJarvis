@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
+import openjarvis.core.config as _config_mod
 from openjarvis.core.config import (
     GpuInfo,
     HardwareInfo,
@@ -24,12 +23,11 @@ pytestmark = pytest.mark.nvidia
 class TestNVIDIADetection:
     """Tests for _detect_nvidia_gpu() against various nvidia-smi outputs."""
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/nvidia-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        return_value="NVIDIA A100-SXM4-80GB, 81920, 1",
-    )
-    def test_nvidia_smi_parsing(self, mock_run, mock_which):
+    def test_nvidia_smi_parsing(self, monkeypatch):
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/nvidia-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd",
+                            lambda *a, **kw: "NVIDIA A100-SXM4-80GB, 81920, 1")
         gpu = _detect_nvidia_gpu()
         assert gpu is not None
         assert gpu.name == "NVIDIA A100-SXM4-80GB"
@@ -37,51 +35,48 @@ class TestNVIDIADetection:
         assert gpu.count == 1
         assert gpu.vendor == "nvidia"
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/nvidia-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        return_value=(
+    def test_nvidia_smi_multi_gpu(self, monkeypatch):
+        """First line is parsed; count field captures GPU count."""
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/nvidia-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd", lambda *a, **kw: (
             "NVIDIA H100 80GB HBM3, 81920, 4\n"
             "NVIDIA H100 80GB HBM3, 81920, 4\n"
             "NVIDIA H100 80GB HBM3, 81920, 4\n"
             "NVIDIA H100 80GB HBM3, 81920, 4"
-        ),
-    )
-    def test_nvidia_smi_multi_gpu(self, mock_run, mock_which):
-        """First line is parsed; count field captures GPU count."""
+        ))
         gpu = _detect_nvidia_gpu()
         assert gpu is not None
         assert gpu.count == 4
         assert "H100" in gpu.name
 
-    @patch("openjarvis.core.config.shutil.which", return_value=None)
-    def test_nvidia_smi_not_found(self, mock_which):
+    def test_nvidia_smi_not_found(self, monkeypatch):
+        monkeypatch.setattr("openjarvis.core.config.shutil.which", lambda _n: None)
         assert _detect_nvidia_gpu() is None
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/nvidia-smi")
-    @patch("openjarvis.core.config._run_cmd", return_value="")
-    def test_nvidia_smi_error(self, mock_run, mock_which):
+    def test_nvidia_smi_error(self, monkeypatch):
         """Empty output from nvidia-smi returns None."""
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/nvidia-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd", lambda *a, **kw: "")
         assert _detect_nvidia_gpu() is None
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/nvidia-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        return_value="NVIDIA GeForce RTX 4090, 24564, 1",
-    )
-    def test_vram_detection(self, mock_run, mock_which):
+    def test_vram_detection(self, monkeypatch):
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/nvidia-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd",
+                            lambda *a, **kw: "NVIDIA GeForce RTX 4090, 24564, 1")
         gpu = _detect_nvidia_gpu()
         assert gpu is not None
         # 24564 MB -> ~24.0 GB
         assert gpu.vram_gb == pytest.approx(24.0, abs=0.1)
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/nvidia-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        return_value="NVIDIA A100-SXM4-80GB, 81920, 1",
-    )
-    def test_compute_capability(self, mock_run, mock_which):
+    def test_compute_capability(self, monkeypatch):
         """compute_capability defaults to empty string when not parsed."""
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/nvidia-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd",
+                            lambda *a, **kw: "NVIDIA A100-SXM4-80GB, 81920, 1")
         gpu = _detect_nvidia_gpu()
         assert gpu is not None
         assert gpu.compute_capability == ""

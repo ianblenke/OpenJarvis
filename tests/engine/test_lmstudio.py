@@ -19,18 +19,22 @@ def engine() -> LMStudioEngine:
 
 
 class TestLMStudioEngineBasics:
+    @pytest.mark.spec("REQ-engine.registration")
     def test_engine_id(self) -> None:
         assert LMStudioEngine.engine_id == "lmstudio"
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_default_host(self) -> None:
         assert LMStudioEngine._default_host == "http://localhost:1234"
 
+    @pytest.mark.spec("REQ-engine.registration")
     def test_registry_registration(self) -> None:
         EngineRegistry.register_value("lmstudio", LMStudioEngine)
         assert EngineRegistry.get("lmstudio") is LMStudioEngine
 
 
 class TestLMStudioGenerate:
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_generate_returns_content(self, engine: LMStudioEngine) -> None:
         with respx.mock:
             respx.post("http://testhost:1234/v1/chat/completions").mock(
@@ -58,6 +62,7 @@ class TestLMStudioGenerate:
         assert result["content"] == "Hello!"
         assert result["usage"]["total_tokens"] == 7
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_generate_connection_error(self, engine: LMStudioEngine) -> None:
         with respx.mock:
             respx.post("http://testhost:1234/v1/chat/completions").mock(
@@ -70,6 +75,7 @@ class TestLMStudioGenerate:
 
 
 class TestLMStudioHealth:
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_true(self, engine: LMStudioEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:1234/v1/models").mock(
@@ -77,6 +83,7 @@ class TestLMStudioHealth:
             )
             assert engine.health() is True
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_false(self, engine: LMStudioEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:1234/v1/models").mock(
@@ -86,6 +93,7 @@ class TestLMStudioHealth:
 
 
 class TestLMStudioListModels:
+    @pytest.mark.spec("REQ-engine.protocol.list-models")
     def test_list_models(self, engine: LMStudioEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:1234/v1/models").mock(

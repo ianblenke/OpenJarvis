@@ -77,6 +77,7 @@ def channel():
 
 
 class TestChannelSendTool:
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_spec(self):
         tool = ChannelSendTool()
         assert tool.spec.name == "channel_send"
@@ -84,6 +85,7 @@ class TestChannelSendTool:
         assert "channel" in tool.spec.parameters["required"]
         assert "content" in tool.spec.parameters["required"]
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_send_success(self, channel):
         tool = ChannelSendTool(channel)
         result = tool.execute(channel="chat-123", content="Hello!")
@@ -92,6 +94,7 @@ class TestChannelSendTool:
         assert len(channel._sent) == 1
         assert channel._sent[0]["content"] == "Hello!"
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_send_with_conversation_id(self, channel):
         tool = ChannelSendTool(channel)
         result = tool.execute(
@@ -100,45 +103,53 @@ class TestChannelSendTool:
         assert result.success is True
         assert channel._sent[0]["conversation_id"] == "conv-1"
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_no_backend(self):
         tool = ChannelSendTool()
         result = tool.execute(channel="chat-123", content="Hello!")
         assert result.success is False
         assert "No channel backend" in result.content
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_missing_params(self, channel):
         tool = ChannelSendTool(channel)
         result = tool.execute()
         assert result.success is False
         assert "required" in result.content
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_missing_content(self, channel):
         tool = ChannelSendTool(channel)
         result = tool.execute(channel="chat-123")
         assert result.success is False
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_send_failure(self):
         tool = ChannelSendTool(_FailingChannel())
         result = tool.execute(channel="chat-123", content="Hello!")
         assert result.success is False
         assert "Failed" in result.content
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_error_handling(self):
         tool = ChannelSendTool(_ErrorChannel())
         result = tool.execute(channel="chat-123", content="Hello!")
         assert result.success is False
         assert "Send error" in result.content
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_tool_id(self):
         assert ChannelSendTool.tool_id == "channel_send"
 
 
 class TestChannelListTool:
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_spec(self):
         tool = ChannelListTool()
         assert tool.spec.name == "channel_list"
         assert tool.spec.category == "channel"
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_list_success(self, channel):
         tool = ChannelListTool(channel)
         result = tool.execute()
@@ -146,51 +157,60 @@ class TestChannelListTool:
         assert "mock-channel-1" in result.content
         assert "mock-channel-2" in result.content
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_no_backend(self):
         tool = ChannelListTool()
         result = tool.execute()
         assert result.success is False
         assert "No channel backend" in result.content
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_error_handling(self):
         tool = ChannelListTool(_ErrorChannel())
         result = tool.execute()
         assert result.success is False
         assert "List error" in result.content
 
+    @pytest.mark.spec("REQ-channels.protocol.messaging")
     def test_tool_id(self):
         assert ChannelListTool.tool_id == "channel_list"
 
 
 class TestChannelStatusTool:
+    @pytest.mark.spec("REQ-channels.protocol.status")
     def test_spec(self):
         tool = ChannelStatusTool()
         assert tool.spec.name == "channel_status"
         assert tool.spec.category == "channel"
 
+    @pytest.mark.spec("REQ-channels.protocol.status")
     def test_status_success(self, channel):
         tool = ChannelStatusTool(channel)
         result = tool.execute()
         assert result.success is True
         assert "connected" in result.content
 
+    @pytest.mark.spec("REQ-channels.protocol.status")
     def test_no_backend(self):
         tool = ChannelStatusTool()
         result = tool.execute()
         assert result.success is False
         assert "No channel backend" in result.content
 
+    @pytest.mark.spec("REQ-channels.protocol.status")
     def test_error_handling(self):
         tool = ChannelStatusTool(_ErrorChannel())
         result = tool.execute()
         assert result.success is False
         assert "Status error" in result.content
 
+    @pytest.mark.spec("REQ-channels.protocol.status")
     def test_tool_id(self):
         assert ChannelStatusTool.tool_id == "channel_status"
 
 
 class TestChannelToolsMCPDiscovery:
+    @pytest.mark.spec("REQ-channels.protocol.registration")
     def test_auto_discover_finds_channel_tools(self):
         """MCPServer auto-discovery finds channel tools."""
         server = MCPServer()
@@ -203,6 +223,7 @@ class TestChannelToolsMCPDiscovery:
         assert "channel_list" in names
         assert "channel_status" in names
 
+    @pytest.mark.spec("REQ-channels.protocol.registration")
     def test_channel_tool_annotations(self):
         """Channel tools have correct MCP annotations."""
         server = MCPServer()

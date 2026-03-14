@@ -21,6 +21,7 @@ def manager():
 
 
 class TestAgentCRUD:
+    @pytest.mark.spec("REQ-agents.manager.crud")
     def test_create_agent(self, manager):
         agent = manager.create_agent(
             name="researcher",
@@ -36,6 +37,7 @@ class TestAgentCRUD:
         assert agent["agent_type"] == "monitor_operative"
         assert agent["status"] == "idle"
 
+    @pytest.mark.spec("REQ-agents.manager.crud")
     def test_list_agents(self, manager):
         manager.create_agent(name="agent1", agent_type="simple")
         manager.create_agent(name="agent2", agent_type="orchestrator")
@@ -44,26 +46,31 @@ class TestAgentCRUD:
         names = {a["name"] for a in agents}
         assert names == {"agent1", "agent2"}
 
+    @pytest.mark.spec("REQ-agents.manager.crud")
     def test_get_agent(self, manager):
         created = manager.create_agent(name="test", agent_type="simple")
         fetched = manager.get_agent(created["id"])
         assert fetched is not None
         assert fetched["name"] == "test"
 
+    @pytest.mark.spec("REQ-agents.manager.crud")
     def test_get_agent_not_found(self, manager):
         assert manager.get_agent("nonexistent") is None
 
+    @pytest.mark.spec("REQ-agents.manager.crud")
     def test_update_agent(self, manager):
         created = manager.create_agent(name="old", agent_type="simple")
         updated = manager.update_agent(created["id"], name="new")
         assert updated["name"] == "new"
 
+    @pytest.mark.spec("REQ-agents.manager.crud")
     def test_delete_agent_soft(self, manager):
         created = manager.create_agent(name="doomed", agent_type="simple")
         manager.delete_agent(created["id"])
         agent = manager.get_agent(created["id"])
         assert agent["status"] == "archived"
 
+    @pytest.mark.spec("REQ-agents.manager.crud")
     def test_pause_resume(self, manager):
         created = manager.create_agent(name="pausable", agent_type="simple")
         manager.pause_agent(created["id"])
@@ -73,6 +80,7 @@ class TestAgentCRUD:
 
 
 class TestTaskCRUD:
+    @pytest.mark.spec("REQ-agents.manager.tasks")
     def test_create_task(self, manager):
         agent = manager.create_agent(name="worker", agent_type="simple")
         task = manager.create_task(agent["id"], description="Find papers on reasoning")
@@ -80,6 +88,7 @@ class TestTaskCRUD:
         assert task["description"] == "Find papers on reasoning"
         assert task["status"] == "pending"
 
+    @pytest.mark.spec("REQ-agents.manager.tasks")
     def test_list_tasks(self, manager):
         agent = manager.create_agent(name="worker", agent_type="simple")
         manager.create_task(agent["id"], description="task1")
@@ -87,12 +96,14 @@ class TestTaskCRUD:
         tasks = manager.list_tasks(agent["id"])
         assert len(tasks) == 2
 
+    @pytest.mark.spec("REQ-agents.manager.tasks")
     def test_update_task(self, manager):
         agent = manager.create_agent(name="worker", agent_type="simple")
         task = manager.create_task(agent["id"], description="task1")
         updated = manager.update_task(task["id"], status="completed")
         assert updated["status"] == "completed"
 
+    @pytest.mark.spec("REQ-agents.manager.tasks")
     def test_delete_task(self, manager):
         agent = manager.create_agent(name="worker", agent_type="simple")
         task = manager.create_task(agent["id"], description="task1")
@@ -102,6 +113,7 @@ class TestTaskCRUD:
 
 
 class TestChannelBindings:
+    @pytest.mark.spec("REQ-agents.manager.channels")
     def test_bind_channel(self, manager):
         agent = manager.create_agent(name="slacker", agent_type="simple")
         binding = manager.bind_channel(
@@ -116,6 +128,7 @@ class TestChannelBindings:
         assert binding["id"]
         assert binding["channel_type"] == "slack"
 
+    @pytest.mark.spec("REQ-agents.manager.channels")
     def test_list_bindings(self, manager):
         agent = manager.create_agent(name="slacker", agent_type="simple")
         manager.bind_channel(
@@ -127,6 +140,7 @@ class TestChannelBindings:
         bindings = manager.list_channel_bindings(agent["id"])
         assert len(bindings) == 2
 
+    @pytest.mark.spec("REQ-agents.manager.channels")
     def test_unbind_channel(self, manager):
         agent = manager.create_agent(name="slacker", agent_type="simple")
         binding = manager.bind_channel(agent["id"], channel_type="slack", config={})
@@ -135,16 +149,19 @@ class TestChannelBindings:
 
 
 class TestSummaryMemory:
+    @pytest.mark.spec("REQ-agents.manager.learning")
     def test_initial_summary_empty(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         assert agent["summary_memory"] == ""
 
+    @pytest.mark.spec("REQ-agents.manager.learning")
     def test_update_summary(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         manager.update_summary_memory(agent["id"], "Key finding: X is Y")
         updated = manager.get_agent(agent["id"])
         assert updated["summary_memory"] == "Key finding: X is Y"
 
+    @pytest.mark.spec("REQ-agents.manager.learning")
     def test_summary_max_length(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         long_text = "x" * 3000
@@ -154,6 +171,7 @@ class TestSummaryMemory:
 
 
 class TestConcurrency:
+    @pytest.mark.spec("REQ-agents.manager.concurrency")
     def test_run_tick_guard(self, manager):
         agent = manager.create_agent(name="busy", agent_type="simple")
         # Simulate agent running
@@ -164,6 +182,7 @@ class TestConcurrency:
 
 
 class TestCheckpoints:
+    @pytest.mark.spec("REQ-agents.manager.checkpoints")
     def test_save_checkpoint(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         manager.save_checkpoint(
@@ -176,6 +195,7 @@ class TestCheckpoints:
         assert len(checkpoints) == 1
         assert checkpoints[0]["tick_id"] == "tick-001"
 
+    @pytest.mark.spec("REQ-agents.manager.checkpoints")
     def test_get_latest_checkpoint(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         manager.save_checkpoint(agent["id"], "tick-001", {"v": 1}, {})
@@ -186,6 +206,7 @@ class TestCheckpoints:
         assert latest["tick_id"] == "tick-002"
         assert latest["conversation_state"]["v"] == 2
 
+    @pytest.mark.spec("REQ-agents.manager.checkpoints")
     def test_checkpoint_retention_max_5(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         for i in range(8):
@@ -196,6 +217,7 @@ class TestCheckpoints:
         # Oldest should be tick-003 (0,1,2 pruned)
         assert checkpoints[-1]["tick_id"] == "tick-003"
 
+    @pytest.mark.spec("REQ-agents.manager.checkpoints")
     def test_recover_agent(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         manager.save_checkpoint(agent["id"], "tick-001", {"messages": []}, {})
@@ -207,6 +229,7 @@ class TestCheckpoints:
 
 
 class TestMessageQueue:
+    @pytest.mark.spec("REQ-agents.manager.messages")
     def test_send_queued_message(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         msg = manager.send_message(agent["id"], "Focus on transformers", mode="queued")
@@ -215,6 +238,7 @@ class TestMessageQueue:
         assert msg["mode"] == "queued"
         assert msg["status"] == "pending"
 
+    @pytest.mark.spec("REQ-agents.manager.messages")
     def test_list_messages(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         manager.send_message(agent["id"], "msg1", mode="queued")
@@ -222,6 +246,7 @@ class TestMessageQueue:
         messages = manager.list_messages(agent["id"])
         assert len(messages) == 2
 
+    @pytest.mark.spec("REQ-agents.manager.messages")
     def test_get_pending_messages(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         manager.send_message(agent["id"], "pending1", mode="queued")
@@ -230,6 +255,7 @@ class TestMessageQueue:
         assert len(pending) == 2
         assert all(m["status"] == "pending" for m in pending)
 
+    @pytest.mark.spec("REQ-agents.manager.messages")
     def test_mark_messages_delivered(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         msg = manager.send_message(agent["id"], "test", mode="queued")
@@ -237,6 +263,7 @@ class TestMessageQueue:
         messages = manager.list_messages(agent["id"])
         assert messages[0]["status"] == "delivered"
 
+    @pytest.mark.spec("REQ-agents.manager.messages")
     def test_add_agent_response(self, manager):
         agent = manager.create_agent(name="test", agent_type="simple")
         manager.send_message(agent["id"], "What did you find?", mode="immediate")
@@ -244,6 +271,7 @@ class TestMessageQueue:
         assert resp["direction"] == "agent_to_user"
 
 
+@pytest.mark.spec("REQ-agents.manager.crud")
 def test_update_agent_budget_fields(tmp_path):
     """update_agent() accepts budget and stall kwargs."""
     import time
@@ -279,6 +307,7 @@ def test_update_agent_budget_fields(tmp_path):
     mgr.close()
 
 
+@pytest.mark.spec("REQ-agents.manager.learning")
 def test_learning_log_crud(tmp_path):
     """AgentManager can write and read learning log entries."""
     from openjarvis.agents.manager import AgentManager
@@ -307,6 +336,7 @@ def test_learning_log_crud(tmp_path):
 
 
 class TestSchemaAndThreading:
+    @pytest.mark.spec("REQ-agents.manager.storage")
     def test_agent_has_runtime_columns(self, manager):
         """New columns from ALTER TABLE migration should exist."""
         agent = manager.create_agent(name="test", agent_type="simple")
@@ -319,6 +349,7 @@ class TestSchemaAndThreading:
         assert agent["total_cost"] == 0.0
         assert agent["total_runs"] == 0
 
+    @pytest.mark.spec("REQ-agents.manager.storage")
     def test_thread_safety(self, manager):
         """AgentManager should be usable from a different thread."""
         import threading

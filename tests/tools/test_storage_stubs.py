@@ -42,15 +42,19 @@ class _DummyStorage(MemoryBackend):
 
 
 class TestStorageStubs:
+    @pytest.mark.spec("REQ-tools.retrieval")
+    @pytest.mark.spec("REQ-storage.protocol.registration")
     def test_abc_cannot_instantiate(self) -> None:
         with pytest.raises(TypeError):
             MemoryBackend()  # type: ignore[abstract]
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_concrete_implementation(self) -> None:
         storage = _DummyStorage()
         doc_id = storage.store("hello world", source="test")
         assert doc_id == "doc-1"
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_retrieve(self) -> None:
         storage = _DummyStorage()
         storage.store("hello world", source="test")
@@ -58,11 +62,14 @@ class TestStorageStubs:
         assert len(results) == 1
         assert results[0].content == "hello world"
 
+    @pytest.mark.spec("REQ-tools.retrieval")
+    @pytest.mark.spec("REQ-storage.result")
     def test_retrieval_result(self) -> None:
         r = RetrievalResult(content="test", score=0.95, source="src")
         assert r.content == "test"
         assert r.score == 0.95
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_backward_compat_import(self) -> None:
         """Memory imports should still work via shim."""
         from openjarvis.tools.storage._stubs import MemoryBackend as MB
@@ -70,11 +77,13 @@ class TestStorageStubs:
         assert MB is MemoryBackend
         assert RR is RetrievalResult
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_canonical_import(self) -> None:
         """Canonical import from tools.storage should work."""
         from openjarvis.tools.storage._stubs import MemoryBackend as MB
         assert MB is MemoryBackend
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_sqlite_backward_compat(self) -> None:
         """SQLiteMemory should be importable from the canonical location."""
         from openjarvis.tools.storage.sqlite import SQLiteMemory as S1

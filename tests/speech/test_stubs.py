@@ -1,8 +1,12 @@
 """Tests for speech ABC and data types."""
 
+import pytest
+
 from openjarvis.speech._stubs import Segment, SpeechBackend, TranscriptionResult
 
 
+@pytest.mark.spec("REQ-speech.protocol.transcribe")
+@pytest.mark.spec("REQ-speech.result")
 def test_transcription_result():
     result = TranscriptionResult(
         text="Hello world",
@@ -18,6 +22,7 @@ def test_transcription_result():
     assert result.segments == []
 
 
+@pytest.mark.spec("REQ-speech.protocol.transcribe")
 def test_segment():
     seg = Segment(text="Hello", start=0.0, end=0.5, confidence=0.98)
     assert seg.text == "Hello"
@@ -25,6 +30,9 @@ def test_segment():
     assert seg.end == 0.5
 
 
+@pytest.mark.spec("REQ-speech.protocol.transcribe")
+@pytest.mark.spec("REQ-speech.protocol.health")
+@pytest.mark.spec("REQ-speech.protocol.formats")
 def test_speech_backend_is_abstract():
     import pytest
 

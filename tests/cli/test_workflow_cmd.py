@@ -2,24 +2,29 @@
 
 from __future__ import annotations
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.cli import cli
 
 
 class TestWorkflowCmd:
+    @pytest.mark.spec("REQ-cli.ask")
     def test_workflow_list_help(self) -> None:
         result = CliRunner().invoke(cli, ["workflow", "list", "--help"])
         assert result.exit_code == 0
 
+    @pytest.mark.spec("REQ-cli.ask")
     def test_workflow_run_help(self) -> None:
         result = CliRunner().invoke(cli, ["workflow", "run", "--help"])
         assert result.exit_code == 0
 
+    @pytest.mark.spec("REQ-cli.ask")
     def test_workflow_status_help(self) -> None:
         result = CliRunner().invoke(cli, ["workflow", "status", "--help"])
         assert result.exit_code == 0
 
+    @pytest.mark.spec("REQ-cli.ask")
     def test_workflow_group_help(self) -> None:
         result = CliRunner().invoke(cli, ["workflow", "--help"])
         assert result.exit_code == 0

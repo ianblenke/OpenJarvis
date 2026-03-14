@@ -1,9 +1,12 @@
+import pytest
+
 from openjarvis.agents._stubs import AgentResult
 from openjarvis.agents.executor import AgentExecutor
 from openjarvis.agents.manager import AgentManager
 from openjarvis.core.events import EventBus, EventType
 
 
+@pytest.mark.spec("REQ-agents.executor.tick")
 def test_budget_exceeded_sets_status(tmp_path):
     """Agent exceeding max_cost gets status budget_exceeded."""
     mgr = AgentManager(str(tmp_path / "test.db"))
@@ -27,6 +30,7 @@ def test_budget_exceeded_sets_status(tmp_path):
     mgr.close()
 
 
+@pytest.mark.spec("REQ-agents.executor.tick")
 def test_budget_not_exceeded_stays_idle(tmp_path):
     """Agent under budget stays idle."""
     mgr = AgentManager(str(tmp_path / "test.db"))
@@ -44,6 +48,7 @@ def test_budget_not_exceeded_stays_idle(tmp_path):
     mgr.close()
 
 
+@pytest.mark.spec("REQ-agents.executor.tick")
 def test_budget_unlimited_skips_check(tmp_path):
     """max_cost=0 means unlimited — no budget enforcement."""
     mgr = AgentManager(str(tmp_path / "test.db"))
@@ -63,6 +68,7 @@ def test_budget_unlimited_skips_check(tmp_path):
     mgr.close()
 
 
+@pytest.mark.spec("REQ-agents.executor.tick")
 def test_token_budget_exceeded(tmp_path):
     """Agent exceeding max_tokens gets budget_exceeded."""
     mgr = AgentManager(str(tmp_path / "test.db"))

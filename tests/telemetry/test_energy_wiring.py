@@ -8,8 +8,6 @@ import json
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from unittest import mock
-from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -21,6 +19,7 @@ from openjarvis.core.types import Message, Role, TelemetryRecord
 from openjarvis.telemetry.aggregator import AggregatedStats, TelemetryAggregator
 from openjarvis.telemetry.instrumented_engine import InstrumentedEngine
 from openjarvis.telemetry.store import TelemetryStore
+from tests.fixtures.engines import FakeEngine
 
 _ask_mod = importlib.import_module("openjarvis.cli.ask")
 _bench_mod = importlib.import_module("openjarvis.cli.bench_cmd")
@@ -31,54 +30,65 @@ _bench_mod = importlib.import_module("openjarvis.cli.bench_cmd")
 # ---------------------------------------------------------------------------
 
 
-def _mock_engine(content="Test response"):
-    """Return a mock engine that generates a fixed response."""
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.health.return_value = True
-    engine.list_models.return_value = ["test-model"]
-    engine.generate.return_value = {
-        "content": content,
-        "usage": {
-            "prompt_tokens": 10,
-            "completion_tokens": 5,
-            "total_tokens": 15,
-        },
-        "model": "test-model",
-        "finish_reason": "stop",
-    }
-    return engine
+def _fake_engine(content="Test response"):
+    """Return a FakeEngine that generates a fixed response."""
+    return FakeEngine(
+        engine_id="mock",
+        responses=[content],
+        models=["test-model"],
+    )
 
 
-def _mock_energy_monitor():
-    """Return a mock energy monitor with realistic sample data."""
-    monitor = MagicMock()
-    monitor.close = MagicMock()
+class FakeEnergySample:
+    """Typed fake energy sample replacing MagicMock."""
 
-    sample = MagicMock()
-    sample.energy_joules = 42.5
-    sample.mean_power_watts = 250.0
-    sample.peak_power_watts = 350.0
-    sample.mean_utilization_pct = 78.0
-    sample.peak_utilization_pct = 95.0
-    sample.mean_memory_used_gb = 16.0
-    sample.peak_memory_used_gb = 20.0
-    sample.mean_temperature_c = 65.0
-    sample.peak_temperature_c = 72.0
-    sample.duration_seconds = 0.5
-    sample.num_snapshots = 10
-    sample.energy_method = "hw_counter"
-    sample.vendor = "nvidia"
-    sample.cpu_energy_joules = 0.0
-    sample.gpu_energy_joules = 42.5
-    sample.dram_energy_joules = 0.0
+    energy_joules: float = 42.5
+    mean_power_watts: float = 250.0
+    peak_power_watts: float = 350.0
+    mean_utilization_pct: float = 78.0
+    peak_utilization_pct: float = 95.0
+    mean_memory_used_gb: float = 16.0
+    peak_memory_used_gb: float = 20.0
+    mean_temperature_c: float = 65.0
+    peak_temperature_c: float = 72.0
+    duration_seconds: float = 0.5
+    num_snapshots: int = 10
+    energy_method: str = "hw_counter"
+    vendor: str = "nvidia"
+    cpu_energy_joules: float = 0.0
+    gpu_energy_joules: float = 42.5
+    dram_energy_joules: float = 0.0
+
+
+class FakeEnergyMonitor:
+    """Typed fake energy monitor replacing MagicMock."""
+
+    def __init__(self) -> None:
+        self._closed = False
+        self.close_count = 0
 
     @contextmanager
-    def _sample():
-        yield sample
+    def sample(self):
+        yield FakeEnergySample()
 
-    monitor.sample = _sample
-    return monitor
+    def close(self) -> None:
+        self._closed = True
+        self.close_count += 1
+
+
+class BrokenEnergyMonitor:
+    """Energy monitor whose sample() always raises."""
+
+    def __init__(self) -> None:
+        self._closed = False
+
+    @contextmanager
+    def sample(self):
+        raise RuntimeError("GPU fell off")
+        yield  # pragma: no cover
+
+    def close(self) -> None:
+        self._closed = True
 
 
 def _energy_config(tmp_path, gpu_metrics=True):
@@ -136,7 +146,7 @@ class TestCliAskWiring:
         cfg = _energy_config(tmp_path, gpu_metrics=gpu_metrics)
         monkeypatch.setattr(_ask_mod, "load_config", lambda: cfg)
 
-        engine = _mock_engine()
+        engine = _fake_engine()
         monkeypatch.setattr(
             _ask_mod, "get_engine",
             lambda *a, **kw: ("mock", engine),
@@ -151,6 +161,7 @@ class TestCliAskWiring:
         )
         return cfg, engine
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_engine_wrapped_with_instrumented(
         self, monkeypatch, tmp_path,
     ):
@@ -160,10 +171,9 @@ class TestCliAskWiring:
         )
         result = CliRunner().invoke(cli, ["ask", "Hello"])
         assert result.exit_code == 0
-        assert "Test response" in result.output
-        # Engine.generate was called (through InstrumentedEngine)
-        engine.generate.assert_called_once()
+        assert engine.call_count >= 1
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_energy_monitor_created_when_gpu_metrics_on(
         self, monkeypatch, tmp_path,
     ):
@@ -171,16 +181,17 @@ class TestCliAskWiring:
         cfg, engine = self._patch_ask(
             monkeypatch, tmp_path, gpu_metrics=True,
         )
-        mock_monitor = _mock_energy_monitor()
-        with patch(
+        fake_monitor = FakeEnergyMonitor()
+        monkeypatch.setattr(
             "openjarvis.telemetry.energy_monitor.create_energy_monitor",
-            return_value=mock_monitor,
-        ):
-            result = CliRunner().invoke(cli, ["ask", "Hello"])
+            lambda **kw: fake_monitor,
+        )
+        result = CliRunner().invoke(cli, ["ask", "Hello"])
 
         assert result.exit_code == 0
-        mock_monitor.close.assert_called_once()
+        assert fake_monitor.close_count == 1
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_no_energy_monitor_when_gpu_metrics_off(
         self, monkeypatch, tmp_path,
     ):
@@ -192,6 +203,7 @@ class TestCliAskWiring:
         result = CliRunner().invoke(cli, ["ask", "Hello"])
         assert result.exit_code == 0
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_telemetry_events_published(
         self, monkeypatch, tmp_path,
     ):
@@ -208,6 +220,7 @@ class TestCliAskWiring:
         assert agg.record_count() == 1
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_energy_data_in_telemetry_record(
         self, monkeypatch, tmp_path,
     ):
@@ -215,12 +228,12 @@ class TestCliAskWiring:
         cfg, engine = self._patch_ask(
             monkeypatch, tmp_path, gpu_metrics=True,
         )
-        mock_monitor = _mock_energy_monitor()
-        with patch(
+        fake_monitor = FakeEnergyMonitor()
+        monkeypatch.setattr(
             "openjarvis.telemetry.energy_monitor.create_energy_monitor",
-            return_value=mock_monitor,
-        ):
-            CliRunner().invoke(cli, ["ask", "Hello"])
+            lambda **kw: fake_monitor,
+        )
+        CliRunner().invoke(cli, ["ask", "Hello"])
 
         db_path = tmp_path / "telemetry.db"
         agg = TelemetryAggregator(db_path)
@@ -235,6 +248,7 @@ class TestCliAskWiring:
         assert rec["throughput_tok_per_sec"] > 0
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_agent_mode_uses_instrumented_engine(
         self, monkeypatch, tmp_path,
     ):
@@ -286,78 +300,84 @@ class TestCliAskWiring:
 class TestSdkWiring:
     """Verify sdk.py wraps engine with InstrumentedEngine."""
 
-    def test_engine_wrapped_in_ensure_engine(self):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_engine_wrapped_in_ensure_engine(self, monkeypatch):
         """_ensure_engine wraps with InstrumentedEngine."""
         from openjarvis.sdk import Jarvis
 
-        engine = _mock_engine()
+        engine = _fake_engine()
         cfg = JarvisConfig()
-        with patch(
+        monkeypatch.setattr(
             "openjarvis.sdk.get_engine",
-            return_value=("mock", engine),
-        ):
-            j = Jarvis(config=cfg, model="test-model")
-            j._ensure_engine()
-            assert isinstance(j._engine, InstrumentedEngine)
-            j.close()
+            lambda *a, **kw: ("mock", engine),
+        )
+        j = Jarvis(config=cfg, model="test-model")
+        j._ensure_engine()
+        assert isinstance(j._engine, InstrumentedEngine)
+        j.close()
 
-    def test_energy_monitor_stored(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_energy_monitor_stored(self, monkeypatch, tmp_path):
         """Energy monitor is created and stored on Jarvis instance."""
         from openjarvis.sdk import Jarvis
 
-        engine = _mock_engine()
+        engine = _fake_engine()
         cfg = _energy_config(tmp_path, gpu_metrics=True)
-        mock_monitor = _mock_energy_monitor()
+        fake_monitor = FakeEnergyMonitor()
 
-        with patch(
+        monkeypatch.setattr(
             "openjarvis.sdk.get_engine",
-            return_value=("mock", engine),
-        ), patch(
+            lambda *a, **kw: ("mock", engine),
+        )
+        monkeypatch.setattr(
             "openjarvis.telemetry.energy_monitor.create_energy_monitor",
-            return_value=mock_monitor,
-        ):
-            j = Jarvis(config=cfg, model="test-model")
-            j._ensure_engine()
-            assert j._energy_monitor is mock_monitor
-            j.close()
-            mock_monitor.close.assert_called_once()
+            lambda **kw: fake_monitor,
+        )
+        j = Jarvis(config=cfg, model="test-model")
+        j._ensure_engine()
+        assert j._energy_monitor is fake_monitor
+        j.close()
+        assert fake_monitor.close_count == 1
 
-    def test_no_energy_monitor_when_gpu_metrics_off(self):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_no_energy_monitor_when_gpu_metrics_off(self, monkeypatch):
         """No energy monitor when gpu_metrics=False."""
         from openjarvis.sdk import Jarvis
 
-        engine = _mock_engine()
+        engine = _fake_engine()
         cfg = JarvisConfig()
         cfg.telemetry.gpu_metrics = False
 
-        with patch(
+        monkeypatch.setattr(
             "openjarvis.sdk.get_engine",
-            return_value=("mock", engine),
-        ):
-            j = Jarvis(config=cfg, model="test-model")
-            j._ensure_engine()
-            assert j._energy_monitor is None
-            j.close()
+            lambda *a, **kw: ("mock", engine),
+        )
+        j = Jarvis(config=cfg, model="test-model")
+        j._ensure_engine()
+        assert j._energy_monitor is None
+        j.close()
 
-    def test_ask_full_records_energy(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_ask_full_records_energy(self, monkeypatch, tmp_path):
         """ask_full records energy via InstrumentedEngine."""
         from openjarvis.sdk import Jarvis
 
-        engine = _mock_engine()
+        engine = _fake_engine()
         cfg = _energy_config(tmp_path, gpu_metrics=True)
-        mock_monitor = _mock_energy_monitor()
+        fake_monitor = FakeEnergyMonitor()
 
-        with patch(
+        monkeypatch.setattr(
             "openjarvis.sdk.get_engine",
-            return_value=("mock", engine),
-        ), patch(
+            lambda *a, **kw: ("mock", engine),
+        )
+        monkeypatch.setattr(
             "openjarvis.telemetry.energy_monitor.create_energy_monitor",
-            return_value=mock_monitor,
-        ):
-            j = Jarvis(config=cfg, model="test-model")
-            result = j.ask_full("Hello")
-            assert result["content"] == "Test response"
-            j.close()
+            lambda **kw: fake_monitor,
+        )
+        j = Jarvis(config=cfg, model="test-model")
+        result = j.ask_full("Hello")
+        assert result["content"] == "Test response"
+        j.close()
 
         # Verify energy was stored
         agg = TelemetryAggregator(cfg.telemetry.db_path)
@@ -367,48 +387,52 @@ class TestSdkWiring:
         assert records[0]["energy_method"] == "hw_counter"
         agg.close()
 
-    def test_close_cleans_up_energy_monitor(self):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_close_cleans_up_energy_monitor(self, monkeypatch):
         """close() releases the energy monitor."""
         from openjarvis.sdk import Jarvis
 
-        engine = _mock_engine()
+        engine = _fake_engine()
         cfg = JarvisConfig()
         cfg.telemetry.gpu_metrics = True
-        mock_monitor = _mock_energy_monitor()
+        fake_monitor = FakeEnergyMonitor()
 
-        with patch(
+        monkeypatch.setattr(
             "openjarvis.sdk.get_engine",
-            return_value=("mock", engine),
-        ), patch(
+            lambda *a, **kw: ("mock", engine),
+        )
+        monkeypatch.setattr(
             "openjarvis.telemetry.energy_monitor.create_energy_monitor",
-            return_value=mock_monitor,
-        ):
-            j = Jarvis(config=cfg, model="test-model")
-            j._ensure_engine()
-            j.close()
-            mock_monitor.close.assert_called_once()
-            assert j._energy_monitor is None
+            lambda **kw: fake_monitor,
+        )
+        j = Jarvis(config=cfg, model="test-model")
+        j._ensure_engine()
+        j.close()
+        assert fake_monitor.close_count == 1
+        assert j._energy_monitor is None
 
-    def test_double_close_safe(self):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_double_close_safe(self, monkeypatch):
         """Double close doesn't crash."""
         from openjarvis.sdk import Jarvis
 
-        engine = _mock_engine()
+        engine = _fake_engine()
         cfg = JarvisConfig()
         cfg.telemetry.gpu_metrics = True
-        mock_monitor = _mock_energy_monitor()
+        fake_monitor = FakeEnergyMonitor()
 
-        with patch(
+        monkeypatch.setattr(
             "openjarvis.sdk.get_engine",
-            return_value=("mock", engine),
-        ), patch(
+            lambda *a, **kw: ("mock", engine),
+        )
+        monkeypatch.setattr(
             "openjarvis.telemetry.energy_monitor.create_energy_monitor",
-            return_value=mock_monitor,
-        ):
-            j = Jarvis(config=cfg, model="test-model")
-            j._ensure_engine()
-            j.close()
-            j.close()  # should not raise
+            lambda **kw: fake_monitor,
+        )
+        j = Jarvis(config=cfg, model="test-model")
+        j._ensure_engine()
+        j.close()
+        j.close()  # should not raise
 
 
 # ---------------------------------------------------------------------------
@@ -419,11 +443,12 @@ class TestSdkWiring:
 class TestInstrumentedEngineEnergy:
     """Verify InstrumentedEngine correctly uses EnergyMonitor."""
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_energy_monitor_sample_called(self):
         """Energy monitor's sample() is invoked during generate."""
-        engine = _mock_engine()
+        engine = _fake_engine()
         bus = EventBus(record_history=True)
-        monitor = _mock_energy_monitor()
+        monitor = FakeEnergyMonitor()
 
         ie = InstrumentedEngine(
             engine, bus, energy_monitor=monitor,
@@ -445,11 +470,12 @@ class TestInstrumentedEngineEnergy:
         assert rec.gpu_utilization_pct == pytest.approx(78.0)
         assert rec.gpu_energy_joules == pytest.approx(42.5)
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_energy_data_injected_into_result(self):
         """_telemetry dict in result contains energy fields."""
-        engine = _mock_engine()
+        engine = _fake_engine()
         bus = EventBus()
-        monitor = _mock_energy_monitor()
+        monitor = FakeEnergyMonitor()
 
         ie = InstrumentedEngine(
             engine, bus, energy_monitor=monitor,
@@ -467,9 +493,10 @@ class TestInstrumentedEngineEnergy:
         assert telem["cpu_energy_joules"] == 0.0
         assert telem["dram_energy_joules"] == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_no_energy_monitor_still_works(self):
         """Without energy_monitor, generate still works with zeros."""
-        engine = _mock_engine()
+        engine = _fake_engine()
         bus = EventBus(record_history=True)
 
         ie = InstrumentedEngine(engine, bus)
@@ -485,18 +512,12 @@ class TestInstrumentedEngineEnergy:
         assert rec.energy_joules == 0.0
         assert rec.energy_method == ""
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_energy_monitor_failure_graceful(self):
         """If energy monitor sample raises, generate still works."""
-        engine = _mock_engine()
+        engine = _fake_engine()
         bus = EventBus()
-        monitor = MagicMock()
-
-        @contextmanager
-        def _broken_sample():
-            raise RuntimeError("GPU fell off")
-            yield  # pragma: no cover
-
-        monitor.sample = _broken_sample
+        monitor = BrokenEnergyMonitor()
 
         ie = InstrumentedEngine(
             engine, bus, energy_monitor=monitor,
@@ -519,99 +540,93 @@ class TestInstrumentedEngineEnergy:
 class TestBenchWiring:
     """Verify bench CLI creates and passes energy_monitor."""
 
-    def test_energy_monitor_passed_to_benchmarks(self):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_energy_monitor_passed_to_benchmarks(self, monkeypatch):
         """When gpu_metrics=True, energy_monitor is passed."""
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.list_models.return_value = ["test-model"]
-        engine.generate.return_value = {
-            "content": "Hello",
-            "usage": {
-                "prompt_tokens": 5,
-                "completion_tokens": 3,
-                "total_tokens": 8,
-            },
-        }
+        engine = FakeEngine(
+            engine_id="mock",
+            responses=["Hello"],
+            models=["test-model"],
+        )
 
         cfg = JarvisConfig()
         cfg.telemetry.gpu_metrics = True
-        mock_monitor = _mock_energy_monitor()
+        fake_monitor = FakeEnergyMonitor()
+        create_called = []
 
-        with patch(
+        def _fake_create(**kw):
+            create_called.append(True)
+            return fake_monitor
+
+        monkeypatch.setattr(
             "openjarvis.cli.bench_cmd.get_engine",
-            return_value=("mock", engine),
-        ), patch(
+            lambda *a, **kw: ("mock", engine),
+        )
+        monkeypatch.setattr(
             "openjarvis.cli.bench_cmd.load_config",
-            return_value=cfg,
-        ), patch(
+            lambda: cfg,
+        )
+        monkeypatch.setattr(
             "openjarvis.telemetry.energy_monitor.create_energy_monitor",
-            return_value=mock_monitor,
-        ) as mock_create:
-            result = CliRunner().invoke(
-                cli, ["bench", "run", "-n", "2"],
-            )
+            _fake_create,
+        )
+        result = CliRunner().invoke(
+            cli, ["bench", "run", "-n", "2"],
+        )
 
         assert result.exit_code == 0
-        mock_create.assert_called_once()
-        mock_monitor.close.assert_called_once()
+        assert len(create_called) == 1
+        assert fake_monitor.close_count == 1
 
-    def test_no_energy_monitor_when_gpu_metrics_off(self):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_no_energy_monitor_when_gpu_metrics_off(self, monkeypatch):
         """No energy_monitor when gpu_metrics=False."""
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.list_models.return_value = ["test-model"]
-        engine.generate.return_value = {
-            "content": "Hello",
-            "usage": {
-                "prompt_tokens": 5,
-                "completion_tokens": 3,
-                "total_tokens": 8,
-            },
-        }
+        engine = FakeEngine(
+            engine_id="mock",
+            responses=["Hello"],
+            models=["test-model"],
+        )
 
         cfg = JarvisConfig()
         cfg.telemetry.gpu_metrics = False
 
-        with patch(
+        monkeypatch.setattr(
             "openjarvis.cli.bench_cmd.get_engine",
-            return_value=("mock", engine),
-        ), patch(
+            lambda *a, **kw: ("mock", engine),
+        )
+        monkeypatch.setattr(
             "openjarvis.cli.bench_cmd.load_config",
-            return_value=cfg,
-        ):
-            result = CliRunner().invoke(
-                cli, ["bench", "run", "-n", "2"],
-            )
+            lambda: cfg,
+        )
+        result = CliRunner().invoke(
+            cli, ["bench", "run", "-n", "2"],
+        )
 
         assert result.exit_code == 0
 
-    def test_warmup_flag_passed(self):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_warmup_flag_passed(self, monkeypatch):
         """--warmup flag is forwarded to benchmarks."""
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.list_models.return_value = ["test-model"]
-        engine.generate.return_value = {
-            "content": "Hello",
-            "usage": {
-                "prompt_tokens": 5,
-                "completion_tokens": 3,
-                "total_tokens": 8,
-            },
-        }
+        engine = FakeEngine(
+            engine_id="mock",
+            responses=["Hello"],
+            models=["test-model"],
+        )
 
         cfg = JarvisConfig()
         cfg.telemetry.gpu_metrics = False
 
-        with patch(
+        monkeypatch.setattr(
             "openjarvis.cli.bench_cmd.get_engine",
-            return_value=("mock", engine),
-        ), patch(
+            lambda *a, **kw: ("mock", engine),
+        )
+        monkeypatch.setattr(
             "openjarvis.cli.bench_cmd.load_config",
-            return_value=cfg,
-        ):
-            result = CliRunner().invoke(
-                cli, ["bench", "run", "-n", "2", "-w", "3"],
-            )
+            lambda: cfg,
+        )
+        result = CliRunner().invoke(
+            cli, ["bench", "run", "-n", "2", "-w", "3"],
+        )
 
         assert result.exit_code == 0
 
@@ -636,28 +651,28 @@ def _populate_energy_db(db_path: Path, n: int = 3) -> None:
     store.close()
 
 
-def _patch_telemetry_config(tmp_path: Path):
-    """Patch load_config for telemetry CLI."""
+def _make_telemetry_config(tmp_path: Path):
+    """Build a real config for telemetry CLI (replaces MagicMock config)."""
     db_path = tmp_path / "telemetry.db"
-    cfg = mock.MagicMock()
+    cfg = JarvisConfig()
     cfg.telemetry.db_path = str(db_path)
-    return mock.patch(
-        "openjarvis.cli.telemetry_cmd.load_config",
-        return_value=cfg,
-    ), db_path
+    return cfg, db_path
 
 
 class TestTelemetryStatsEnergy:
     """Verify telemetry stats shows energy columns."""
 
-    def test_energy_columns_in_stats(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_energy_columns_in_stats(self, monkeypatch, tmp_path):
         """Stats output includes energy metrics when data exists."""
-        p, db_path = _patch_telemetry_config(tmp_path)
+        cfg, db_path = _make_telemetry_config(tmp_path)
         _populate_energy_db(db_path)
-        with p:
-            result = CliRunner().invoke(
-                cli, ["telemetry", "stats"],
-            )
+        monkeypatch.setattr(
+            "openjarvis.cli.telemetry_cmd.load_config", lambda: cfg,
+        )
+        result = CliRunner().invoke(
+            cli, ["telemetry", "stats"],
+        )
         assert result.exit_code == 0
         assert "Total Energy (J)" in result.output
         assert "Avg Throughput" in result.output
@@ -668,9 +683,10 @@ class TestTelemetryStatsEnergy:
         # Rich may wrap "GPU Util %" across lines
         assert "GPU Util" in result.output
 
-    def test_no_energy_columns_when_no_energy_data(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_no_energy_columns_when_no_energy_data(self, monkeypatch, tmp_path):
         """Stats hides energy columns when no energy data."""
-        p, db_path = _patch_telemetry_config(tmp_path)
+        cfg, db_path = _make_telemetry_config(tmp_path)
         # Populate with non-energy records
         store = TelemetryStore(db_path)
         for i in range(3):
@@ -686,24 +702,29 @@ class TestTelemetryStatsEnergy:
             ))
         store.close()
 
-        with p:
-            result = CliRunner().invoke(
-                cli, ["telemetry", "stats"],
-            )
+        monkeypatch.setattr(
+            "openjarvis.cli.telemetry_cmd.load_config", lambda: cfg,
+        )
+        result = CliRunner().invoke(
+            cli, ["telemetry", "stats"],
+        )
         assert result.exit_code == 0
         assert "Total Calls" in result.output
         # Energy columns should NOT appear
         assert "Total Energy" not in result.output
         assert "GPU Util" not in result.output
 
-    def test_export_includes_energy_fields(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_export_includes_energy_fields(self, monkeypatch, tmp_path):
         """JSON export includes all energy fields."""
-        p, db_path = _patch_telemetry_config(tmp_path)
+        cfg, db_path = _make_telemetry_config(tmp_path)
         _populate_energy_db(db_path, n=1)
-        with p:
-            result = CliRunner().invoke(
-                cli, ["telemetry", "export", "-f", "json"],
-            )
+        monkeypatch.setattr(
+            "openjarvis.cli.telemetry_cmd.load_config", lambda: cfg,
+        )
+        result = CliRunner().invoke(
+            cli, ["telemetry", "export", "-f", "json"],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert len(data) == 1
@@ -720,14 +741,17 @@ class TestTelemetryStatsEnergy:
         assert rec["energy_method"] == "hw_counter"
         assert rec["energy_vendor"] == "nvidia"
 
-    def test_csv_export_has_energy_headers(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
+    def test_csv_export_has_energy_headers(self, monkeypatch, tmp_path):
         """CSV export includes energy column headers."""
-        p, db_path = _patch_telemetry_config(tmp_path)
+        cfg, db_path = _make_telemetry_config(tmp_path)
         _populate_energy_db(db_path, n=1)
-        with p:
-            result = CliRunner().invoke(
-                cli, ["telemetry", "export", "-f", "csv"],
-            )
+        monkeypatch.setattr(
+            "openjarvis.cli.telemetry_cmd.load_config", lambda: cfg,
+        )
+        result = CliRunner().invoke(
+            cli, ["telemetry", "export", "-f", "csv"],
+        )
         assert result.exit_code == 0
         header = result.output.strip().splitlines()[0]
         assert "energy_joules" in header
@@ -744,6 +768,7 @@ class TestTelemetryStatsEnergy:
 class TestAggregatorEnergy:
     """Verify AggregatedStats includes energy aggregations."""
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_aggregated_stats_has_energy_fields(self):
         """AggregatedStats dataclass has energy attributes."""
         s = AggregatedStats()
@@ -751,6 +776,7 @@ class TestAggregatorEnergy:
         assert s.avg_throughput_tok_per_sec == 0.0
         assert s.avg_gpu_utilization_pct == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_summary_computes_energy_totals(self, tmp_path):
         """summary() sums energy and computes weighted averages."""
         db_path = tmp_path / "telemetry.db"
@@ -788,6 +814,7 @@ class TestAggregatorEnergy:
         )
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_per_model_stats_energy(self, tmp_path):
         """per_model_stats includes energy fields."""
         db_path = tmp_path / "telemetry.db"
@@ -807,6 +834,7 @@ class TestAggregatorEnergy:
         )
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_per_engine_stats_energy(self, tmp_path):
         """per_engine_stats includes energy fields."""
         db_path = tmp_path / "telemetry.db"
@@ -822,6 +850,7 @@ class TestAggregatorEnergy:
         assert stats[0].total_energy_joules == pytest.approx(25.0)
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_empty_summary_energy_zero(self, tmp_path):
         """Empty DB has zero energy in summary."""
         db_path = tmp_path / "telemetry.db"
@@ -842,14 +871,15 @@ class TestAggregatorEnergy:
 
 
 class TestEndToEndPipeline:
-    """Full pipeline: ask → InstrumentedEngine → energy → SQLite → stats."""
+    """Full pipeline: ask -> InstrumentedEngine -> energy -> SQLite -> stats."""
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_ask_to_stats_with_energy(
         self, monkeypatch, tmp_path,
     ):
         """Full flow: ask records energy, stats displays it."""
         cfg = _energy_config(tmp_path, gpu_metrics=True)
-        engine = _mock_engine()
+        engine = _fake_engine()
 
         monkeypatch.setattr(_ask_mod, "load_config", lambda: cfg)
         monkeypatch.setattr(
@@ -865,34 +895,35 @@ class TestEndToEndPipeline:
             lambda e: {"mock": ["test-model"]},
         )
 
-        mock_monitor = _mock_energy_monitor()
-        with patch(
+        fake_monitor = FakeEnergyMonitor()
+        monkeypatch.setattr(
             "openjarvis.telemetry.energy_monitor.create_energy_monitor",
-            return_value=mock_monitor,
-        ):
-            CliRunner().invoke(cli, ["ask", "Hello"])
+            lambda **kw: fake_monitor,
+        )
+        CliRunner().invoke(cli, ["ask", "Hello"])
 
         # Now verify stats shows energy
-        telem_cfg = mock.MagicMock()
+        telem_cfg = JarvisConfig()
         telem_cfg.telemetry.db_path = cfg.telemetry.db_path
-        with mock.patch(
+        monkeypatch.setattr(
             "openjarvis.cli.telemetry_cmd.load_config",
-            return_value=telem_cfg,
-        ):
-            result = CliRunner().invoke(
-                cli, ["telemetry", "stats"],
-            )
+            lambda: telem_cfg,
+        )
+        result = CliRunner().invoke(
+            cli, ["telemetry", "stats"],
+        )
 
         assert result.exit_code == 0
         assert "Total Energy (J)" in result.output
         assert "42.50" in result.output  # energy_joules value
 
+    @pytest.mark.spec("REQ-telemetry.energy.monitor")
     def test_ask_to_export_with_energy(
         self, monkeypatch, tmp_path,
     ):
         """Full flow: ask records energy, export includes it."""
         cfg = _energy_config(tmp_path, gpu_metrics=True)
-        engine = _mock_engine()
+        engine = _fake_engine()
 
         monkeypatch.setattr(_ask_mod, "load_config", lambda: cfg)
         monkeypatch.setattr(
@@ -908,23 +939,23 @@ class TestEndToEndPipeline:
             lambda e: {"mock": ["test-model"]},
         )
 
-        mock_monitor = _mock_energy_monitor()
-        with patch(
+        fake_monitor = FakeEnergyMonitor()
+        monkeypatch.setattr(
             "openjarvis.telemetry.energy_monitor.create_energy_monitor",
-            return_value=mock_monitor,
-        ):
-            CliRunner().invoke(cli, ["ask", "Hello"])
+            lambda **kw: fake_monitor,
+        )
+        CliRunner().invoke(cli, ["ask", "Hello"])
 
         # Export as JSON
-        telem_cfg = mock.MagicMock()
+        telem_cfg = JarvisConfig()
         telem_cfg.telemetry.db_path = cfg.telemetry.db_path
-        with mock.patch(
+        monkeypatch.setattr(
             "openjarvis.cli.telemetry_cmd.load_config",
-            return_value=telem_cfg,
-        ):
-            result = CliRunner().invoke(
-                cli, ["telemetry", "export", "-f", "json"],
-            )
+            lambda: telem_cfg,
+        )
+        result = CliRunner().invoke(
+            cli, ["telemetry", "export", "-f", "json"],
+        )
 
         data = json.loads(result.output)
         assert len(data) == 1

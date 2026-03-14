@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+import pytest
+
 from openjarvis.tools.retrieval import RetrievalTool
 from openjarvis.tools.storage._stubs import MemoryBackend, RetrievalResult
 
@@ -42,28 +44,33 @@ class _ErrorBackend(_FakeBackend):
 
 
 class TestRetrievalTool:
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_spec(self):
         tool = RetrievalTool()
         assert tool.spec.name == "retrieval"
         assert tool.spec.category == "memory"
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_no_backend(self):
         tool = RetrievalTool()
         result = tool.execute(query="test")
         assert result.success is False
         assert "No memory backend" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_empty_query(self):
         tool = RetrievalTool(backend=_FakeBackend())
         result = tool.execute(query="")
         assert result.success is False
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_no_results(self):
         tool = RetrievalTool(backend=_FakeBackend())
         result = tool.execute(query="test")
         assert result.success is True
         assert "No relevant results" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_with_results(self):
         results = [
             RetrievalResult(content="Answer 1", score=0.9, source="doc.md"),
@@ -76,6 +83,7 @@ class TestRetrievalTool:
         assert "[Source: doc.md]" in result.content
         assert result.metadata["num_results"] == 2
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_top_k_override(self):
         results = [
             RetrievalResult(content="A", score=0.9),
@@ -87,12 +95,14 @@ class TestRetrievalTool:
         assert result.success is True
         assert "A" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_backend_error(self):
         tool = RetrievalTool(backend=_ErrorBackend())
         result = tool.execute(query="test")
         assert result.success is False
         assert "Retrieval error" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_openai_function(self):
         tool = RetrievalTool()
         fn = tool.to_openai_function()

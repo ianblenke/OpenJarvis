@@ -27,6 +27,7 @@ def _make_client(tool_classes):
 
 @pytest.mark.parametrize("tool_name", ["calculator", "think"])
 class TestMCPToolsMatrix:
+    @pytest.mark.spec("REQ-mcp.server.discovery")
     def test_tool_discoverable_via_mcp(self, tool_name):
         tool_cls, _, _ = _TOOL_CONFIGS[tool_name]
         client = _make_client([tool_cls])
@@ -34,6 +35,7 @@ class TestMCPToolsMatrix:
         names = [t.name for t in tools]
         assert tool_name in names
 
+    @pytest.mark.spec("REQ-mcp.server.discovery")
     def test_tool_callable_via_mcp(self, tool_name):
         tool_cls, arguments, expected = _TOOL_CONFIGS[tool_name]
         client = _make_client([tool_cls])
@@ -41,6 +43,7 @@ class TestMCPToolsMatrix:
         assert result["isError"] is False
         assert expected in result["content"][0]["text"]
 
+    @pytest.mark.spec("REQ-mcp.server.discovery")
     def test_tool_has_description(self, tool_name):
         tool_cls, _, _ = _TOOL_CONFIGS[tool_name]
         client = _make_client([tool_cls])
@@ -48,6 +51,7 @@ class TestMCPToolsMatrix:
         tool_spec = next(t for t in tools if t.name == tool_name)
         assert tool_spec.description  # non-empty
 
+    @pytest.mark.spec("REQ-mcp.server.discovery")
     def test_tool_has_input_schema(self, tool_name):
         tool_cls, _, _ = _TOOL_CONFIGS[tool_name]
         client = _make_client([tool_cls])
@@ -55,6 +59,7 @@ class TestMCPToolsMatrix:
         tool_spec = next(t for t in tools if t.name == tool_name)
         assert "properties" in tool_spec.parameters
 
+    @pytest.mark.spec("REQ-mcp.server.discovery")
     def test_tool_result_format(self, tool_name):
         tool_cls, arguments, _ = _TOOL_CONFIGS[tool_name]
         client = _make_client([tool_cls])
@@ -64,6 +69,7 @@ class TestMCPToolsMatrix:
         assert isinstance(result["content"], list)
         assert result["content"][0]["type"] == "text"
 
+    @pytest.mark.spec("REQ-mcp.server.discovery")
     def test_tool_error_handling(self, tool_name):
         """Calling with bad args should not crash the server."""
         tool_cls, _, _ = _TOOL_CONFIGS[tool_name]
@@ -73,6 +79,7 @@ class TestMCPToolsMatrix:
         # Should return a response (not crash)
         assert "content" in result
 
+    @pytest.mark.spec("REQ-mcp.server.discovery")
     def test_tool_in_full_server(self, tool_name):
         """Tool should be discoverable when all tools are registered."""
         all_classes = [cls for cls, _, _ in _TOOL_CONFIGS.values()]

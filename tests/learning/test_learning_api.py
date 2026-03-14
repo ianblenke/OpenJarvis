@@ -27,6 +27,7 @@ def _client() -> TestClient:
 # ---- /v1/learning/stats tests ----
 
 
+@pytest.mark.spec("REQ-learning.registration")
 def test_learning_stats_returns_200():
     """GET /v1/learning/stats should return 200."""
     client = _client()
@@ -34,6 +35,7 @@ def test_learning_stats_returns_200():
     assert resp.status_code == 200
 
 
+@pytest.mark.spec("REQ-learning.registration")
 def test_learning_stats_has_all_sections():
     """Response must contain skill_discovery section."""
     client = _client()
@@ -45,6 +47,7 @@ def test_learning_stats_has_all_sections():
 # ---- /v1/learning/policy tests ----
 
 
+@pytest.mark.spec("REQ-learning.registration")
 def test_learning_policy_returns_200():
     """GET /v1/learning/policy should return 200."""
     client = _client()
@@ -52,6 +55,7 @@ def test_learning_policy_returns_200():
     assert resp.status_code == 200
 
 
+@pytest.mark.spec("REQ-learning.registration")
 def test_learning_policy_has_expected_keys():
     """Response must include enabled, routing, intelligence, agent, metrics."""
     client = _client()
@@ -63,6 +67,7 @@ def test_learning_policy_has_expected_keys():
     assert "metrics" in data
 
 
+@pytest.mark.spec("REQ-learning.registration")
 def test_learning_policy_routing_structure():
     """The routing section should contain policy name and min_samples."""
     client = _client()
@@ -74,6 +79,7 @@ def test_learning_policy_routing_structure():
     assert isinstance(routing["min_samples"], int)
 
 
+@pytest.mark.spec("REQ-learning.registration")
 def test_learning_policy_enabled_is_bool():
     """The enabled field should be a boolean."""
     client = _client()

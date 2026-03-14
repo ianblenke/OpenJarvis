@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from contextlib import contextmanager
-from unittest.mock import MagicMock
+from dataclasses import dataclass
 
 import pytest
 
@@ -13,54 +13,68 @@ from openjarvis.core.types import Message, Role, TelemetryRecord
 from openjarvis.telemetry.aggregator import TelemetryAggregator
 from openjarvis.telemetry.instrumented_engine import InstrumentedEngine
 from openjarvis.telemetry.store import TelemetryStore
+from tests.fixtures.engines import FakeEngine
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _mock_engine(ttft=0.1):
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.generate.return_value = {
-        "content": "hello world",
-        "usage": {
+class _TtftEngine(FakeEngine):
+    """FakeEngine subclass that returns fixed usage + ttft in result."""
+
+    def __init__(self, ttft: float = 0.1) -> None:
+        super().__init__(engine_id="mock", responses=["hello world"])
+        self._ttft = ttft
+
+    def generate(self, messages, *, model, **kwargs):
+        result = super().generate(messages, model=model, **kwargs)
+        result["usage"] = {
             "prompt_tokens": 10,
             "completion_tokens": 50,
             "total_tokens": 60,
-        },
-        "model": "test-model",
-        "ttft": ttft,
-    }
-    return engine
+        }
+        result["model"] = "test-model"
+        result["ttft"] = self._ttft
+        return result
 
 
-def _mock_energy_monitor(energy_joules=10.0, power_watts=200.0):
-    monitor = MagicMock()
-    sample = MagicMock()
-    sample.energy_joules = energy_joules
-    sample.mean_power_watts = power_watts
-    sample.peak_power_watts = power_watts
-    sample.mean_utilization_pct = 80.0
-    sample.peak_utilization_pct = 95.0
-    sample.mean_memory_used_gb = 16.0
-    sample.peak_memory_used_gb = 20.0
-    sample.mean_temperature_c = 65.0
-    sample.peak_temperature_c = 72.0
-    sample.duration_seconds = 0.5
-    sample.num_snapshots = 10
-    sample.energy_method = "hw_counter"
-    sample.vendor = "nvidia"
-    sample.cpu_energy_joules = 0.0
-    sample.gpu_energy_joules = energy_joules
-    sample.dram_energy_joules = 0.0
+@dataclass
+class _FakeEnergySample:
+    """Typed fake energy sample with all fields the InstrumentedEngine reads."""
+    energy_joules: float = 10.0
+    mean_power_watts: float = 200.0
+    peak_power_watts: float = 200.0
+    mean_utilization_pct: float = 80.0
+    peak_utilization_pct: float = 95.0
+    mean_memory_used_gb: float = 16.0
+    peak_memory_used_gb: float = 20.0
+    mean_temperature_c: float = 65.0
+    peak_temperature_c: float = 72.0
+    duration_seconds: float = 0.5
+    num_snapshots: int = 10
+    energy_method: str = "hw_counter"
+    vendor: str = "nvidia"
+    cpu_energy_joules: float = 0.0
+    gpu_energy_joules: float = 10.0
+    dram_energy_joules: float = 0.0
+
+
+class _FakeEnergyMonitor:
+    """Typed fake energy monitor implementing the sample() context manager."""
+
+    def __init__(self, energy_joules: float = 10.0, power_watts: float = 200.0) -> None:
+        self._energy_joules = energy_joules
+        self._power_watts = power_watts
 
     @contextmanager
-    def _sample():
-        yield sample
-
-    monitor.sample = _sample
-    return monitor
+    def sample(self):
+        yield _FakeEnergySample(
+            energy_joules=self._energy_joules,
+            mean_power_watts=self._power_watts,
+            peak_power_watts=self._power_watts,
+            gpu_energy_joules=self._energy_joules,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -71,9 +85,10 @@ def _mock_energy_monitor(energy_joules=10.0, power_watts=200.0):
 class TestDecodeLatency:
     """decode_latency = latency - ttft when ttft > 0."""
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_decode_latency_computed(self):
         bus = EventBus()
-        engine = _mock_engine(ttft=0.1)
+        engine = _TtftEngine(ttft=0.1)
         ie = InstrumentedEngine(engine, bus)
 
         records = []
@@ -89,9 +104,10 @@ class TestDecodeLatency:
             rec.latency_seconds - 0.1
         )
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_decode_latency_zero_when_no_ttft(self):
         bus = EventBus()
-        engine = _mock_engine(ttft=0.0)
+        engine = _TtftEngine(ttft=0.0)
         ie = InstrumentedEngine(engine, bus)
 
         records = []
@@ -108,10 +124,11 @@ class TestDecodeLatency:
 class TestPhaseEnergySplit:
     """prefill_energy + decode_energy ≈ total energy."""
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_energy_split_proportional(self):
         bus = EventBus()
-        engine = _mock_engine(ttft=0.1)
-        monitor = _mock_energy_monitor(energy_joules=10.0)
+        engine = _TtftEngine(ttft=0.1)
+        monitor = _FakeEnergyMonitor(energy_joules=10.0)
         ie = InstrumentedEngine(engine, bus, energy_monitor=monitor)
 
         records = []
@@ -133,9 +150,10 @@ class TestPhaseEnergySplit:
         actual_prefill_frac = rec.prefill_energy_joules / rec.energy_joules
         assert actual_prefill_frac == pytest.approx(expected_prefill_frac)
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_no_energy_no_split(self):
         bus = EventBus()
-        engine = _mock_engine(ttft=0.1)
+        engine = _TtftEngine(ttft=0.1)
         ie = InstrumentedEngine(engine, bus)  # no energy monitor
 
         records = []
@@ -149,10 +167,11 @@ class TestPhaseEnergySplit:
         assert rec.prefill_energy_joules == 0.0
         assert rec.decode_energy_joules == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_no_ttft_no_split(self):
         bus = EventBus()
-        engine = _mock_engine(ttft=0.0)
-        monitor = _mock_energy_monitor(energy_joules=10.0)
+        engine = _TtftEngine(ttft=0.0)
+        monitor = _FakeEnergyMonitor(energy_joules=10.0)
         ie = InstrumentedEngine(engine, bus, energy_monitor=monitor)
 
         records = []
@@ -167,12 +186,13 @@ class TestPhaseEnergySplit:
         assert rec.prefill_energy_joules == 0.0
         assert rec.decode_energy_joules == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_latency_equals_ttft_decode_energy_zero(self):
         """When latency == ttft, all energy is prefill."""
         bus = EventBus()
         # We'll use a ttft that's close to the measured latency
-        engine = _mock_engine(ttft=0.001)
-        monitor = _mock_energy_monitor(energy_joules=5.0)
+        engine = _TtftEngine(ttft=0.001)
+        monitor = _FakeEnergyMonitor(energy_joules=5.0)
         ie = InstrumentedEngine(engine, bus, energy_monitor=monitor)
 
         records = []
@@ -192,10 +212,11 @@ class TestPhaseEnergySplit:
 class TestPhaseEnergyInTelemetryDict:
     """Phase energy fields appear in result['_telemetry']."""
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_telemetry_dict_contains_phase_energy(self):
         bus = EventBus()
-        engine = _mock_engine(ttft=0.1)
-        monitor = _mock_energy_monitor(energy_joules=10.0)
+        engine = _TtftEngine(ttft=0.1)
+        monitor = _FakeEnergyMonitor(energy_joules=10.0)
         ie = InstrumentedEngine(engine, bus, energy_monitor=monitor)
 
         result = ie.generate([Message(role=Role.USER, content="hi")], model="m")
@@ -211,6 +232,7 @@ class TestPhaseEnergyInTelemetryDict:
 class TestPhaseEnergyStorage:
     """Phase energy fields are stored and queryable."""
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_store_and_aggregate(self, tmp_path):
         store = TelemetryStore(tmp_path / "test.db")
         store.record(TelemetryRecord(

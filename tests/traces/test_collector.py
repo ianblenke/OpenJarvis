@@ -1,4 +1,4 @@
-"""Tests for the TraceCollector."""
+"""Tests for the TraceCollector using real agents and event bus."""
 
 from __future__ import annotations
 
@@ -6,11 +6,15 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+import pytest
+
 from openjarvis.agents._stubs import AgentContext, AgentResult, BaseAgent
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.types import StepType
+from openjarvis.engine._stubs import InferenceEngine
 from openjarvis.traces.collector import TraceCollector
 from openjarvis.traces.store import TraceStore
+from tests.fixtures.engines import FakeEngine
 
 
 class _FakeAgent(BaseAgent):
@@ -38,6 +42,11 @@ class _FakeAgent(BaseAgent):
             })
             self._bus.publish(EventType.INFERENCE_END, {
                 "total_tokens": 50,
+                "usage": {
+                    "prompt_tokens": 20,
+                    "completion_tokens": 30,
+                    "total_tokens": 50,
+                },
             })
         return AgentResult(content=self._response, turns=1)
 
@@ -57,7 +66,10 @@ class _ToolAgent(BaseAgent):
         # Simulate inference + tool call + inference
         inf = {"model": "qwen3:8b", "engine": "ollama"}
         self._bus.publish(EventType.INFERENCE_START, inf)
-        self._bus.publish(EventType.INFERENCE_END, {"total_tokens": 30})
+        self._bus.publish(EventType.INFERENCE_END, {
+            "total_tokens": 30,
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        })
         self._bus.publish(EventType.TOOL_CALL_START, {
             "tool": "calculator", "arguments": {"expr": "2+2"},
         })
@@ -65,11 +77,52 @@ class _ToolAgent(BaseAgent):
             "tool": "calculator", "success": True, "latency": 0.01,
         })
         self._bus.publish(EventType.INFERENCE_START, inf)
-        self._bus.publish(EventType.INFERENCE_END, {"total_tokens": 20})
+        self._bus.publish(EventType.INFERENCE_END, {
+            "total_tokens": 20,
+            "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20},
+        })
         return AgentResult(content="4", turns=2)
 
 
+class _EngineUsingAgent(BaseAgent):
+    """Agent that uses FakeEngine for generation."""
+
+    agent_id = "engine_agent"
+
+    def __init__(
+        self,
+        engine: InferenceEngine,
+        bus: Optional[EventBus] = None,
+    ) -> None:
+        self._engine = engine
+        self._bus = bus
+
+    def run(
+        self, input: str, context: Optional[AgentContext] = None,
+        **kwargs: Any,
+    ) -> AgentResult:
+        from openjarvis.core.types import Message, Role
+
+        messages = [Message(role=Role.USER, content=input)]
+        if self._bus:
+            self._bus.publish(EventType.INFERENCE_START, {
+                "model": "fake-model",
+                "engine": self._engine.engine_id,
+            })
+
+        result = self._engine.generate(messages, model="fake-model")
+
+        if self._bus:
+            self._bus.publish(EventType.INFERENCE_END, {
+                "total_tokens": result["usage"]["total_tokens"],
+                "usage": result["usage"],
+            })
+
+        return AgentResult(content=result["content"], turns=1)
+
+
 class TestTraceCollector:
+    @pytest.mark.spec("REQ-traces.collector.basic")
     def test_basic_collection(self, tmp_path: Path) -> None:
         bus = EventBus()
         store = TraceStore(tmp_path / "test.db")
@@ -90,6 +143,7 @@ class TestTraceCollector:
         assert trace.result == "hello"
         store.close()
 
+    @pytest.mark.spec("REQ-traces.collector.generate-steps")
     def test_records_generate_steps(self, tmp_path: Path) -> None:
         bus = EventBus()
         store = TraceStore(tmp_path / "test.db")
@@ -104,6 +158,7 @@ class TestTraceCollector:
         assert generate_steps[0].output.get("tokens") == 50
         store.close()
 
+    @pytest.mark.spec("REQ-traces.collector.tool-steps")
     def test_records_tool_steps(self, tmp_path: Path) -> None:
         bus = EventBus()
         store = TraceStore(tmp_path / "test.db")
@@ -119,6 +174,7 @@ class TestTraceCollector:
         assert tool_steps[0].output["success"] is True
         store.close()
 
+    @pytest.mark.spec("REQ-traces.collector.respond-step")
     def test_records_respond_step(self, tmp_path: Path) -> None:
         bus = EventBus()
         store = TraceStore(tmp_path / "test.db")
@@ -133,6 +189,7 @@ class TestTraceCollector:
         assert respond_steps[0].output["content"] == "final answer"
         store.close()
 
+    @pytest.mark.spec("REQ-traces.collector.memory-retrieve")
     def test_records_memory_retrieve(self, tmp_path: Path) -> None:
         bus = EventBus()
         store = TraceStore(tmp_path / "test.db")
@@ -157,8 +214,10 @@ class TestTraceCollector:
         retrieve_steps = [s for s in trace.steps if s.step_type == StepType.RETRIEVE]
         assert len(retrieve_steps) == 1
         assert retrieve_steps[0].input["query"] == "meeting notes"
+        assert retrieve_steps[0].output["num_results"] == 3
         store.close()
 
+    @pytest.mark.spec("REQ-traces.collector.trace-complete-event")
     def test_publishes_trace_complete(self, tmp_path: Path) -> None:
         bus = EventBus(record_history=True)
         store = TraceStore(tmp_path / "test.db")
@@ -175,6 +234,7 @@ class TestTraceCollector:
         assert trace_events[0].data["trace"].query == "test"
         store.close()
 
+    @pytest.mark.spec("REQ-traces.collector.no-store")
     def test_no_store(self) -> None:
         """Collector works without a store (just collects, doesn't persist)."""
         bus = EventBus()
@@ -184,6 +244,7 @@ class TestTraceCollector:
         result = collector.run("test")
         assert result.content == "ok"
 
+    @pytest.mark.spec("REQ-traces.collector.no-bus")
     def test_no_bus(self, tmp_path: Path) -> None:
         """Collector works without a bus (no event-based step collection)."""
         store = TraceStore(tmp_path / "test.db")
@@ -199,6 +260,7 @@ class TestTraceCollector:
         assert trace.steps[0].step_type == StepType.RESPOND
         store.close()
 
+    @pytest.mark.spec("REQ-traces.collector.timing")
     def test_timing(self, tmp_path: Path) -> None:
         bus = EventBus()
         store = TraceStore(tmp_path / "test.db")
@@ -215,6 +277,7 @@ class TestTraceCollector:
         assert trace.ended_at >= trace.started_at
         store.close()
 
+    @pytest.mark.spec("REQ-traces.collector.unsubscribe")
     def test_unsubscribes_after_run(self, tmp_path: Path) -> None:
         """Events after run() completes should NOT affect the next trace."""
         bus = EventBus()
@@ -224,7 +287,7 @@ class TestTraceCollector:
 
         collector.run("first")
 
-        # Emit events after run — should not affect stored trace
+        # Emit events after run -- should not affect stored trace
         bus.publish(EventType.INFERENCE_START, {"model": "stray"})
         bus.publish(EventType.INFERENCE_END, {"total_tokens": 999})
 
@@ -233,4 +296,83 @@ class TestTraceCollector:
         # No step with model="stray"
         for s in trace.steps:
             assert s.input.get("model") != "stray"
+        store.close()
+
+    @pytest.mark.spec("REQ-traces.collector.fake-engine")
+    def test_with_fake_engine(self, tmp_path: Path) -> None:
+        """Use FakeEngine to drive the agent and verify trace collection."""
+        engine = FakeEngine(responses=["computed answer"])
+        bus = EventBus()
+        store = TraceStore(tmp_path / "test.db")
+        agent = _EngineUsingAgent(engine=engine, bus=bus)
+        collector = TraceCollector(agent, store=store, bus=bus)
+
+        result = collector.run("What is 2+2?")
+
+        assert result.content == "computed answer"
+        assert engine.call_count == 1
+        assert store.count() == 1
+
+        trace = store.list_traces()[0]
+        assert trace.agent == "engine_agent"
+        assert trace.model == "fake-model"
+        assert trace.engine == "fake"
+        store.close()
+
+    @pytest.mark.spec("REQ-traces.collector.multiple-runs")
+    def test_multiple_runs_independent(self, tmp_path: Path) -> None:
+        """Each run() should produce an independent trace."""
+        bus = EventBus()
+        store = TraceStore(tmp_path / "test.db")
+        agent = _FakeAgent(bus=bus)
+        collector = TraceCollector(agent, store=store, bus=bus)
+
+        collector.run("first query")
+        collector.run("second query")
+
+        assert store.count() == 2
+        traces = store.list_traces()
+        queries = {t.query for t in traces}
+        assert queries == {"first query", "second query"}
+        store.close()
+
+    @pytest.mark.spec("REQ-traces.collector.tool-agent-step-order")
+    def test_tool_agent_step_order(self, tmp_path: Path) -> None:
+        """Steps should be ordered: generate, tool_call, generate, respond."""
+        bus = EventBus()
+        store = TraceStore(tmp_path / "test.db")
+        agent = _ToolAgent(bus=bus)
+        collector = TraceCollector(agent, store=store, bus=bus)
+
+        collector.run("calculate something")
+
+        trace = store.list_traces()[0]
+        step_types = [s.step_type for s in trace.steps]
+        assert step_types == [
+            StepType.GENERATE,
+            StepType.TOOL_CALL,
+            StepType.GENERATE,
+            StepType.RESPOND,
+        ]
+        store.close()
+
+    @pytest.mark.spec("REQ-traces.collector.last-trace")
+    def test_last_trace_before_run(self) -> None:
+        """last_trace returns None before any run() (lines 103-104)."""
+        bus = EventBus()
+        agent = _FakeAgent(response="hello", bus=bus)
+        collector = TraceCollector(agent, bus=bus)
+        assert collector.last_trace is None
+
+    @pytest.mark.spec("REQ-traces.collector.last-trace")
+    def test_last_trace_after_run(self, tmp_path: Path) -> None:
+        """last_trace returns None after run (steps cleared on next, line 106)."""
+        bus = EventBus()
+        store = TraceStore(tmp_path / "test.db")
+        agent = _FakeAgent(response="hello", bus=bus)
+        collector = TraceCollector(agent, store=store, bus=bus)
+        collector.run("test")
+        # After a run, last_trace returns None (line 106 comment:
+        # "Use TraceStore.get() for retrieval after run")
+        assert collector.last_trace is None
         store.close()

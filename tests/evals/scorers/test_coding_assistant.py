@@ -1,5 +1,7 @@
 """Tests for the coding_assistant scorer."""
 
+import pytest
+
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.scorers.coding_assistant import CodingAssistantScorer
 
@@ -19,6 +21,7 @@ def _make_record(buggy_code, test_code, originally_failing, originally_passing):
     )
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_all_tests_fixed():
     buggy = "def add(a, b): return a - b"
     tests = (
@@ -41,6 +44,7 @@ def test_all_tests_fixed():
     assert meta["fix_rate"] == 1.0
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_partial_fix():
     buggy = "def div(a, b): return a / b"
     tests = (
@@ -59,6 +63,7 @@ def test_partial_fix():
     assert meta["fix_rate"] == 0.0
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_empty_answer():
     record = _make_record("def f(): pass", "assert f() is None", [], [])
     scorer = CodingAssistantScorer()

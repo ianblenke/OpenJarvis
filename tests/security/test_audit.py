@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.security.audit import AuditLogger
 from openjarvis.security.types import (
@@ -16,6 +18,7 @@ from openjarvis.security.types import (
 
 
 class TestAuditLogger:
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_log_and_query(self, tmp_path: Path) -> None:
         logger = AuditLogger(db_path=tmp_path / "audit.db")
         event = SecurityEvent(
@@ -44,6 +47,7 @@ class TestAuditLogger:
         assert results[0].action_taken == "warn"
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_count(self, tmp_path: Path) -> None:
         logger = AuditLogger(db_path=tmp_path / "audit.db")
         assert logger.count() == 0
@@ -58,6 +62,8 @@ class TestAuditLogger:
         assert logger.count() == 3
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.query")
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_query_by_type(self, tmp_path: Path) -> None:
         logger = AuditLogger(db_path=tmp_path / "audit.db")
 
@@ -81,6 +87,7 @@ class TestAuditLogger:
         assert len(pii) == 1
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_query_since(self, tmp_path: Path) -> None:
         logger = AuditLogger(db_path=tmp_path / "audit.db")
 
@@ -100,6 +107,8 @@ class TestAuditLogger:
         assert len(recent) == 1
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.auto-subscribe")
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_bus_subscription(self, tmp_path: Path) -> None:
         bus = EventBus()
         logger = AuditLogger(db_path=tmp_path / "audit.db", bus=bus)
@@ -127,6 +136,7 @@ class TestAuditLogger:
         assert results[0].findings[0].pattern_name == "openai_key"
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_bus_subscription_block_event(self, tmp_path: Path) -> None:
         bus = EventBus()
         logger = AuditLogger(db_path=tmp_path / "audit.db", bus=bus)
@@ -143,6 +153,7 @@ class TestAuditLogger:
         assert logger.count() == 1
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.append-only")
     def test_close_and_reopen(self, tmp_path: Path) -> None:
         db_path = tmp_path / "audit.db"
         logger = AuditLogger(db_path=db_path)

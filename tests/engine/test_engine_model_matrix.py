@@ -152,6 +152,7 @@ def _mock_error(respx_mock, engine_key: str, host: str):
 
 @pytest.mark.parametrize("engine_key,host", ENGINES_AND_HOSTS)
 class TestEngineScenarios:
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_simple_chat(self, respx_mock, engine_key: str, host: str) -> None:
         engine = _create_engine(engine_key, host)
         _mock_simple_chat(respx_mock, engine_key, host, "qwen3:8b")
@@ -161,6 +162,7 @@ class TestEngineScenarios:
         assert result["content"] == "Hello!"
         assert result["usage"]["prompt_tokens"] == 10
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_tool_call(self, respx_mock, engine_key: str, host: str) -> None:
         engine = _create_engine(engine_key, host)
         _mock_tool_call(respx_mock, engine_key, host, "qwen3:8b")
@@ -172,6 +174,7 @@ class TestEngineScenarios:
         assert "tool_calls" in result
         assert result["tool_calls"][0]["name"] == "calculator"
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_error_handling(self, respx_mock, engine_key: str, host: str) -> None:
         engine = _create_engine(engine_key, host)
         _mock_error(respx_mock, engine_key, host)
@@ -189,6 +192,7 @@ class TestEngineScenarios:
 @pytest.mark.parametrize("engine_key,host", ENGINES_AND_HOSTS)
 @pytest.mark.parametrize("model_id", MODELS)
 class TestEngineModelMatrix:
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_generate_with_model(
         self, respx_mock, engine_key: str, host: str, model_id: str,
     ) -> None:
@@ -208,6 +212,7 @@ class TestEngineModelMatrix:
 
 @pytest.mark.parametrize("engine_key,host", ENGINES_AND_HOSTS)
 class TestEngineHealth:
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_true(self, respx_mock, engine_key: str, host: str) -> None:
         engine = _create_engine(engine_key, host)
         if engine_key == "ollama":
@@ -221,6 +226,7 @@ class TestEngineHealth:
             )
         assert engine.health() is True
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_false(self, respx_mock, engine_key: str, host: str) -> None:
         engine = _create_engine(engine_key, host)
         if engine_key == "ollama":

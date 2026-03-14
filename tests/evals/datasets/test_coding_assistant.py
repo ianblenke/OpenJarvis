@@ -1,20 +1,25 @@
 """Tests for the coding_assistant dataset."""
 
+import pytest
+
 from openjarvis.evals.datasets.coding_assistant import CodingAssistantDataset
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_dataset_loads():
     ds = CodingAssistantDataset()
     ds.load(max_samples=5, seed=42)
     assert ds.size() == 5
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_dataset_full_size():
     ds = CodingAssistantDataset()
     ds.load()
     assert ds.size() == 30
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_record_structure():
     ds = CodingAssistantDataset()
     ds.load(max_samples=1, seed=42)
@@ -29,6 +34,7 @@ def test_record_structure():
     assert record.metadata.get("originally_passing_tests")
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_difficulty_tiers():
     ds = CodingAssistantDataset()
     ds.load()

@@ -1,7 +1,8 @@
 """Tests for activity-based stall detection."""
 
 import time
-from unittest.mock import patch
+
+import pytest
 
 from openjarvis.agents._stubs import AgentResult
 from openjarvis.agents.executor import AgentExecutor
@@ -9,7 +10,8 @@ from openjarvis.agents.manager import AgentManager
 from openjarvis.core.events import EventBus, EventType
 
 
-def test_activity_tracking_updates_last_activity_at(tmp_path):
+@pytest.mark.spec("REQ-agents.executor.tick")
+def test_activity_tracking_updates_last_activity_at(tmp_path, monkeypatch):
     """EventBus TOOL_CALL_START updates last_activity_at for the right agent."""
     mgr = AgentManager(str(tmp_path / "test.db"))
     bus = EventBus()
@@ -24,8 +26,8 @@ def test_activity_tracking_updates_last_activity_at(tmp_path):
         })
         return AgentResult(content="done", metadata={})
 
-    with patch.object(executor, "_invoke_agent", side_effect=fake_invoke):
-        executor.execute_tick(agent["id"])
+    monkeypatch.setattr(executor, "_invoke_agent", fake_invoke)
+    executor.execute_tick(agent["id"])
 
     updated = mgr.get_agent(agent["id"])
     assert updated["last_activity_at"] is not None
@@ -33,7 +35,8 @@ def test_activity_tracking_updates_last_activity_at(tmp_path):
     mgr.close()
 
 
-def test_activity_tracking_filters_by_agent_id(tmp_path):
+@pytest.mark.spec("REQ-agents.executor.tick")
+def test_activity_tracking_filters_by_agent_id(tmp_path, monkeypatch):
     """Events from other agents don't update this agent's last_activity_at."""
     mgr = AgentManager(str(tmp_path / "test.db"))
     bus = EventBus()
@@ -50,14 +53,15 @@ def test_activity_tracking_filters_by_agent_id(tmp_path):
         })
         return AgentResult(content="done", metadata={})
 
-    with patch.object(executor, "_invoke_agent", side_effect=fake_invoke):
-        executor.execute_tick(agent_a["id"])
+    monkeypatch.setattr(executor, "_invoke_agent", fake_invoke)
+    executor.execute_tick(agent_a["id"])
 
     updated_b = mgr.get_agent(agent_b["id"])
     assert updated_b["last_activity_at"] is None
     mgr.close()
 
 
+@pytest.mark.spec("REQ-agents.executor.tick")
 def test_reconcile_detects_stalled_agent(tmp_path):
     """_reconcile() marks agent as stalled when last_activity_at is too old."""
     mgr = AgentManager(str(tmp_path / "test.db"))
@@ -86,6 +90,7 @@ def test_reconcile_detects_stalled_agent(tmp_path):
     mgr.close()
 
 
+@pytest.mark.spec("REQ-agents.executor.tick")
 def test_reconcile_skips_active_agent(tmp_path):
     """_reconcile() does NOT mark agent as stalled if activity is recent."""
     mgr = AgentManager(str(tmp_path / "test.db"))
@@ -105,6 +110,7 @@ def test_reconcile_skips_active_agent(tmp_path):
     mgr.close()
 
 
+@pytest.mark.spec("REQ-agents.executor.tick")
 def test_reconcile_retries_exhausted_sets_error(tmp_path):
     """After max_stall_retries, agent goes to error status."""
     mgr = AgentManager(str(tmp_path / "test.db"))

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
+import openjarvis.core.config as _config_mod
 from openjarvis.core.config import (
     GpuInfo,
     HardwareInfo,
@@ -24,10 +23,10 @@ pytestmark = pytest.mark.apple
 class TestAppleDetection:
     """Tests for _detect_apple_gpu() against system_profiler outputs."""
 
-    @patch("openjarvis.core.config.platform.system", return_value="Darwin")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        return_value=(
+    def test_system_profiler_parsing(self, monkeypatch):
+        monkeypatch.setattr("openjarvis.core.config.platform.system",
+                            lambda: "Darwin")
+        monkeypatch.setattr(_config_mod, "_run_cmd", lambda *a, **kw: (
             "Graphics/Displays:\n"
             "\n"
             "    Apple M4 Max:\n"
@@ -36,39 +35,37 @@ class TestAppleDetection:
             "      Type: GPU\n"
             "      Bus: Built-In\n"
             "      Total Number of Cores: 40\n"
-        ),
-    )
-    def test_system_profiler_parsing(self, mock_run, mock_system):
+        ))
         gpu = _detect_apple_gpu()
         assert gpu is not None
         assert gpu.vendor == "apple"
         assert "M4 Max" in gpu.name
 
-    @patch("openjarvis.core.config.platform.system", return_value="Linux")
-    def test_non_darwin_returns_none(self, mock_system):
+    def test_non_darwin_returns_none(self, monkeypatch):
         """On non-Darwin platforms, Apple GPU detection returns None."""
+        monkeypatch.setattr("openjarvis.core.config.platform.system",
+                            lambda: "Linux")
         assert _detect_apple_gpu() is None
 
-    @patch("openjarvis.core.config.platform.system", return_value="Darwin")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        return_value=(
+    def test_no_apple_in_output(self, monkeypatch):
+        """system_profiler output without 'Apple' returns None."""
+        monkeypatch.setattr("openjarvis.core.config.platform.system",
+                            lambda: "Darwin")
+        monkeypatch.setattr(_config_mod, "_run_cmd", lambda *a, **kw: (
             "Graphics/Displays:\n"
             "\n"
             "    Intel UHD Graphics 630:\n"
             "\n"
             "      Chipset Model: Intel UHD Graphics 630\n"
             "      Type: GPU\n"
-        ),
-    )
-    def test_no_apple_in_output(self, mock_run, mock_system):
-        """system_profiler output without 'Apple' returns None."""
+        ))
         assert _detect_apple_gpu() is None
 
-    @patch("openjarvis.core.config.platform.system", return_value="Darwin")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        return_value=(
+    def test_apple_chip_model_extraction(self, monkeypatch):
+        """'Chipset Model:' line is used to extract the chip name."""
+        monkeypatch.setattr("openjarvis.core.config.platform.system",
+                            lambda: "Darwin")
+        monkeypatch.setattr(_config_mod, "_run_cmd", lambda *a, **kw: (
             "Graphics/Displays:\n"
             "\n"
             "    Apple M2 Ultra:\n"
@@ -76,34 +73,30 @@ class TestAppleDetection:
             "      Chipset Model: Apple M2 Ultra\n"
             "      Type: GPU\n"
             "      Bus: Built-In\n"
-        ),
-    )
-    def test_apple_chip_model_extraction(self, mock_run, mock_system):
-        """'Chipset Model:' line is used to extract the chip name."""
+        ))
         gpu = _detect_apple_gpu()
         assert gpu is not None
         assert gpu.name == "Apple M2 Ultra"
 
-    @patch("openjarvis.core.config.platform.system", return_value="Darwin")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        return_value=(
+    def test_apple_no_chipset_line_falls_back(self, monkeypatch):
+        """When no 'Chipset Model' line exists, falls back to 'Apple Silicon'."""
+        monkeypatch.setattr("openjarvis.core.config.platform.system",
+                            lambda: "Darwin")
+        monkeypatch.setattr(_config_mod, "_run_cmd", lambda *a, **kw: (
             "Graphics/Displays:\n"
             "    Apple Silicon\n"
             "      Type: GPU\n"
-        ),
-    )
-    def test_apple_no_chipset_line_falls_back(self, mock_run, mock_system):
-        """When no 'Chipset Model' line exists, falls back to 'Apple Silicon'."""
+        ))
         gpu = _detect_apple_gpu()
         assert gpu is not None
         assert gpu.vendor == "apple"
         assert gpu.name == "Apple Silicon"
 
-    @patch("openjarvis.core.config.platform.system", return_value="Darwin")
-    @patch("openjarvis.core.config._run_cmd", return_value="")
-    def test_empty_profiler_output(self, mock_run, mock_system):
+    def test_empty_profiler_output(self, monkeypatch):
         """Empty system_profiler output returns None (no 'Apple' substring)."""
+        monkeypatch.setattr("openjarvis.core.config.platform.system",
+                            lambda: "Darwin")
+        monkeypatch.setattr(_config_mod, "_run_cmd", lambda *a, **kw: "")
         assert _detect_apple_gpu() is None
 
 

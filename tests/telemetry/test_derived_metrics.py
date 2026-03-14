@@ -1,158 +1,246 @@
-"""Tier 1: derived metrics — energy_per_output_token, throughput_per_watt."""
+"""Tests for derived telemetry metrics -- energy efficiency, throughput, ITL.
+
+Covers:
+- efficiency.py: MFU/MBU, estimate_model_flops_per_token, estimate_model_bytes_per_token
+- itl.py: compute_itl_stats percentile computation
+- Derived fields on TelemetryRecord (tokens_per_joule, energy_per_output_token, etc.)
+- Round-trip through TelemetryStore + TelemetryAggregator
+"""
 
 from __future__ import annotations
 
 import time
-from contextlib import contextmanager
-from unittest.mock import MagicMock
 
 import pytest
 
-from openjarvis.core.events import EventBus, EventType
-from openjarvis.core.types import Message, Role, TelemetryRecord
-from openjarvis.telemetry.aggregator import TelemetryAggregator
-from openjarvis.telemetry.instrumented_engine import InstrumentedEngine
+from openjarvis.core.types import TelemetryRecord
+from openjarvis.telemetry.efficiency import (
+    EfficiencyMetrics,
+    compute_efficiency,
+    estimate_model_bytes_per_token,
+    estimate_model_flops_per_token,
+)
+from openjarvis.telemetry.itl import compute_itl_stats
 from openjarvis.telemetry.store import TelemetryStore
 
 # ---------------------------------------------------------------------------
-# Helpers
+# estimate_model_flops_per_token
 # ---------------------------------------------------------------------------
 
 
-def _mock_engine(completion_tokens=50):
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.generate.return_value = {
-        "content": "hello",
-        "usage": {
-            "prompt_tokens": 10,
-            "completion_tokens": completion_tokens,
-            "total_tokens": 10 + completion_tokens,
-        },
-        "model": "test-model",
-        "ttft": 0.05,
-    }
-    return engine
+class TestEstimateFlopsPerToken:
+    @pytest.mark.spec("REQ-telemetry.derived-flops-dense")
+    def test_dense_model_flops(self) -> None:
+        """Dense model: FLOPs per token = 2 * params_b * 1e9."""
+        result = estimate_model_flops_per_token(7.0)
+        assert result == pytest.approx(2.0 * 7.0 * 1e9)
 
+    @pytest.mark.spec("REQ-telemetry.derived-flops-moe")
+    def test_moe_model_uses_active_params(self) -> None:
+        """MoE: uses active_params_b, not total."""
+        result = estimate_model_flops_per_token(47.0, active_params_b=12.9)
+        assert result == pytest.approx(2.0 * 12.9 * 1e9)
 
-def _mock_energy_monitor(energy_joules=10.0, power_watts=200.0):
-    monitor = MagicMock()
-    sample = MagicMock()
-    sample.energy_joules = energy_joules
-    sample.mean_power_watts = power_watts
-    sample.peak_power_watts = power_watts
-    sample.mean_utilization_pct = 80.0
-    sample.peak_utilization_pct = 95.0
-    sample.mean_memory_used_gb = 16.0
-    sample.peak_memory_used_gb = 20.0
-    sample.mean_temperature_c = 65.0
-    sample.peak_temperature_c = 72.0
-    sample.duration_seconds = 0.5
-    sample.num_snapshots = 10
-    sample.energy_method = "hw_counter"
-    sample.vendor = "nvidia"
-    sample.cpu_energy_joules = 0.0
-    sample.gpu_energy_joules = energy_joules
-    sample.dram_energy_joules = 0.0
-
-    @contextmanager
-    def _sample():
-        yield sample
-
-    monitor.sample = _sample
-    return monitor
+    @pytest.mark.spec("REQ-telemetry.derived-flops-none-active")
+    def test_none_active_defaults_to_total(self) -> None:
+        """active_params_b=None defaults to param_count_b."""
+        result = estimate_model_flops_per_token(3.0, active_params_b=None)
+        assert result == pytest.approx(2.0 * 3.0 * 1e9)
 
 
 # ---------------------------------------------------------------------------
-# Tests
+# estimate_model_bytes_per_token
 # ---------------------------------------------------------------------------
 
 
-class TestDerivedMetricsInGenerate:
-    """InstrumentedEngine.generate() computes derived metrics."""
+class TestEstimateBytesPerToken:
+    @pytest.mark.spec("REQ-telemetry.derived-bytes-fp16")
+    def test_default_fp16(self) -> None:
+        """Default bytes_per_param=2.0 (FP16)."""
+        result = estimate_model_bytes_per_token(7.0)
+        assert result == pytest.approx(7.0 * 1e9 * 2.0)
 
-    def test_energy_per_output_token(self):
-        bus = EventBus()
-        engine = _mock_engine(completion_tokens=50)
-        monitor = _mock_energy_monitor(energy_joules=10.0)
-        ie = InstrumentedEngine(engine, bus, energy_monitor=monitor)
+    @pytest.mark.spec("REQ-telemetry.derived-bytes-int8")
+    def test_int8_quantization(self) -> None:
+        """INT8 → bytes_per_param=1.0."""
+        result = estimate_model_bytes_per_token(7.0, bytes_per_param=1.0)
+        assert result == pytest.approx(7.0 * 1e9 * 1.0)
 
-        records = []
-        bus.subscribe(
-            EventType.TELEMETRY_RECORD,
-            lambda e: records.append(e.data["record"]),
+
+# ---------------------------------------------------------------------------
+# compute_efficiency
+# ---------------------------------------------------------------------------
+
+
+class TestComputeEfficiency:
+    @pytest.mark.spec("REQ-telemetry.derived-mfu")
+    def test_mfu_calculation(self) -> None:
+        """MFU = actual_flops / peak_flops * 100."""
+        metrics = compute_efficiency(
+            param_count_b=7.0,
+            active_params_b=None,
+            gpu_peak_tflops=312.0,
+            gpu_peak_bandwidth_gb_s=2039.0,
+            tokens_per_sec=100.0,
         )
+        # actual_flops = 2 * 7e9 * 100 = 1.4e12
+        # peak_flops   = 312e12
+        expected_mfu = (1.4e12 / 312e12) * 100.0
+        assert metrics.mfu_pct == pytest.approx(expected_mfu)
 
-        ie.generate([Message(role=Role.USER, content="hi")], model="m")
-        rec = records[0]
-        assert rec.energy_per_output_token_joules == pytest.approx(10.0 / 50)
-
-    def test_throughput_per_watt(self):
-        bus = EventBus()
-        engine = _mock_engine(completion_tokens=100)
-        monitor = _mock_energy_monitor(power_watts=250.0)
-        ie = InstrumentedEngine(engine, bus, energy_monitor=monitor)
-
-        records = []
-        bus.subscribe(
-            EventType.TELEMETRY_RECORD,
-            lambda e: records.append(e.data["record"]),
+    @pytest.mark.spec("REQ-telemetry.derived-mbu")
+    def test_mbu_calculation(self) -> None:
+        """MBU = actual_bandwidth / peak_bandwidth * 100."""
+        metrics = compute_efficiency(
+            param_count_b=7.0,
+            active_params_b=None,
+            gpu_peak_tflops=312.0,
+            gpu_peak_bandwidth_gb_s=2039.0,
+            tokens_per_sec=100.0,
         )
+        actual_bw = (7.0 * 1e9 * 2.0 * 100.0) / 1e9
+        expected_mbu = (actual_bw / 2039.0) * 100.0
+        assert metrics.mbu_pct == pytest.approx(expected_mbu)
 
-        ie.generate([Message(role=Role.USER, content="hi")], model="m")
-        rec = records[0]
-        # throughput_per_watt = throughput / power_watts
-        expected = rec.throughput_tok_per_sec / 250.0
-        assert rec.throughput_per_watt == pytest.approx(expected)
-
-    def test_zero_completion_tokens_no_division_error(self):
-        bus = EventBus()
-        engine = _mock_engine(completion_tokens=0)
-        monitor = _mock_energy_monitor(energy_joules=5.0)
-        ie = InstrumentedEngine(engine, bus, energy_monitor=monitor)
-
-        records = []
-        bus.subscribe(
-            EventType.TELEMETRY_RECORD,
-            lambda e: records.append(e.data["record"]),
+    @pytest.mark.spec("REQ-telemetry.derived-ipj")
+    def test_ipj_with_energy(self) -> None:
+        """IPJ = accuracy / energy_joules."""
+        metrics = compute_efficiency(
+            param_count_b=7.0,
+            active_params_b=None,
+            gpu_peak_tflops=312.0,
+            gpu_peak_bandwidth_gb_s=2039.0,
+            tokens_per_sec=100.0,
+            energy_joules=50.0,
+            accuracy=0.85,
         )
+        assert metrics.ipj == pytest.approx(0.85 / 50.0)
 
-        ie.generate([Message(role=Role.USER, content="hi")], model="m")
-        rec = records[0]
-        assert rec.energy_per_output_token_joules == 0.0
-
-    def test_zero_power_no_division_error(self):
-        bus = EventBus()
-        engine = _mock_engine(completion_tokens=50)
-        # No energy monitor -> power_watts = 0
-        ie = InstrumentedEngine(engine, bus)
-
-        records = []
-        bus.subscribe(
-            EventType.TELEMETRY_RECORD,
-            lambda e: records.append(e.data["record"]),
+    @pytest.mark.spec("REQ-telemetry.derived-ipj-zero-energy")
+    def test_ipj_zero_energy(self) -> None:
+        """IPJ = 0 when energy_joules = 0."""
+        metrics = compute_efficiency(
+            param_count_b=7.0,
+            active_params_b=None,
+            gpu_peak_tflops=312.0,
+            gpu_peak_bandwidth_gb_s=2039.0,
+            tokens_per_sec=100.0,
+            energy_joules=0.0,
+            accuracy=0.9,
         )
+        assert metrics.ipj == 0.0
 
-        ie.generate([Message(role=Role.USER, content="hi")], model="m")
-        rec = records[0]
-        assert rec.throughput_per_watt == 0.0
+    @pytest.mark.spec("REQ-telemetry.derived-multi-gpu")
+    def test_multi_gpu_scaling(self) -> None:
+        """Peak FLOPS and bandwidth scale with num_gpus."""
+        m1 = compute_efficiency(
+            param_count_b=7.0,
+            active_params_b=None,
+            gpu_peak_tflops=312.0,
+            gpu_peak_bandwidth_gb_s=2039.0,
+            tokens_per_sec=100.0,
+            num_gpus=1,
+        )
+        m4 = compute_efficiency(
+            param_count_b=7.0,
+            active_params_b=None,
+            gpu_peak_tflops=312.0,
+            gpu_peak_bandwidth_gb_s=2039.0,
+            tokens_per_sec=100.0,
+            num_gpus=4,
+        )
+        # 4 GPUs should have 4x peak -> MFU should be 1/4
+        assert m4.mfu_pct == pytest.approx(m1.mfu_pct / 4.0)
+        assert m4.peak_flops == pytest.approx(m1.peak_flops * 4.0)
 
-    def test_derived_metrics_in_telemetry_dict(self):
-        bus = EventBus()
-        engine = _mock_engine(completion_tokens=25)
-        monitor = _mock_energy_monitor(energy_joules=5.0, power_watts=100.0)
-        ie = InstrumentedEngine(engine, bus, energy_monitor=monitor)
+    @pytest.mark.spec("REQ-telemetry.derived-zero-peak")
+    def test_zero_peak_flops_no_division_error(self) -> None:
+        """MFU is 0 when peak FLOPS is 0."""
+        metrics = compute_efficiency(
+            param_count_b=7.0,
+            active_params_b=None,
+            gpu_peak_tflops=0.0,
+            gpu_peak_bandwidth_gb_s=0.0,
+            tokens_per_sec=100.0,
+        )
+        assert metrics.mfu_pct == 0.0
+        assert metrics.mbu_pct == 0.0
 
-        result = ie.generate([Message(role=Role.USER, content="hi")], model="m")
-        t = result["_telemetry"]
-        assert t["energy_per_output_token_joules"] == pytest.approx(5.0 / 25)
-        assert t["throughput_per_watt"] > 0
+    @pytest.mark.spec("REQ-telemetry.derived-efficiency-returns-dataclass")
+    def test_returns_efficiency_metrics(self) -> None:
+        metrics = compute_efficiency(
+            param_count_b=7.0,
+            active_params_b=None,
+            gpu_peak_tflops=312.0,
+            gpu_peak_bandwidth_gb_s=2039.0,
+            tokens_per_sec=100.0,
+        )
+        assert isinstance(metrics, EfficiencyMetrics)
+        assert metrics.actual_flops > 0
+        assert metrics.actual_bandwidth_gb_s > 0
+
+
+# ---------------------------------------------------------------------------
+# compute_itl_stats
+# ---------------------------------------------------------------------------
+
+
+class TestComputeItlStats:
+    @pytest.mark.spec("REQ-telemetry.derived-itl-basic")
+    def test_basic_itl_computation(self) -> None:
+        """ITL stats from evenly-spaced timestamps."""
+        timestamps = [0.0, 10.0, 20.0, 30.0, 40.0]
+        stats = compute_itl_stats(timestamps)
+        # All inter-token latencies are 10.0ms
+        assert stats["mean_ms"] == pytest.approx(10.0)
+        assert stats["p50_ms"] == pytest.approx(10.0)
+        assert stats["min_ms"] == pytest.approx(10.0)
+        assert stats["max_ms"] == pytest.approx(10.0)
+
+    @pytest.mark.spec("REQ-telemetry.derived-itl-varying")
+    def test_varying_itl(self) -> None:
+        """ITL stats from varying-interval timestamps."""
+        timestamps = [0.0, 5.0, 15.0, 30.0, 50.0]
+        stats = compute_itl_stats(timestamps)
+        # ITLs: 5, 10, 15, 20
+        assert stats["min_ms"] == pytest.approx(5.0)
+        assert stats["max_ms"] == pytest.approx(20.0)
+        assert stats["mean_ms"] == pytest.approx(12.5)
+
+    @pytest.mark.spec("REQ-telemetry.derived-itl-too-few")
+    def test_too_few_timestamps_returns_zeros(self) -> None:
+        """Fewer than 2 timestamps -> all zeros."""
+        assert compute_itl_stats([])["mean_ms"] == 0
+        assert compute_itl_stats([5.0])["p50_ms"] == 0
+
+    @pytest.mark.spec("REQ-telemetry.derived-itl-two-timestamps")
+    def test_two_timestamps(self) -> None:
+        """Exactly 2 timestamps -> one ITL value."""
+        stats = compute_itl_stats([0.0, 42.0])
+        assert stats["mean_ms"] == pytest.approx(42.0)
+        assert stats["p99_ms"] == pytest.approx(42.0)
+
+    @pytest.mark.spec("REQ-telemetry.derived-itl-percentiles-ordered")
+    def test_percentiles_ordered(self) -> None:
+        """p50 <= p90 <= p95 <= p99."""
+        timestamps = [0.0, 1.0, 3.0, 6.0, 10.0, 15.0, 21.0, 28.0, 36.0, 45.0]
+        stats = compute_itl_stats(timestamps)
+        assert stats["p50_ms"] <= stats["p90_ms"]
+        assert stats["p90_ms"] <= stats["p95_ms"]
+        assert stats["p95_ms"] <= stats["p99_ms"]
+
+
+# ---------------------------------------------------------------------------
+# Derived metrics stored and queryable via aggregator
+# ---------------------------------------------------------------------------
 
 
 class TestDerivedMetricsInStore:
-    """Derived metrics are stored and queryable."""
+    @pytest.mark.spec("REQ-telemetry.derived-store-roundtrip")
+    def test_store_and_query_derived_fields(self, tmp_path) -> None:
+        """Derived metric fields survive store -> aggregator round-trip."""
+        from openjarvis.telemetry.aggregator import TelemetryAggregator
 
-    def test_store_and_query(self, tmp_path):
         store = TelemetryStore(tmp_path / "test.db")
         rec = TelemetryRecord(
             timestamp=time.time(),
@@ -162,6 +250,7 @@ class TestDerivedMetricsInStore:
             energy_joules=10.0,
             energy_per_output_token_joules=0.2,
             throughput_per_watt=0.5,
+            tokens_per_joule=5.0,
         )
         store.record(rec)
 
@@ -170,10 +259,15 @@ class TestDerivedMetricsInStore:
         assert len(stats) == 1
         assert stats[0].avg_energy_per_output_token_joules == pytest.approx(0.2)
         assert stats[0].avg_throughput_per_watt == pytest.approx(0.5)
+        assert stats[0].avg_tokens_per_joule == pytest.approx(5.0)
         agg.close()
         store.close()
 
-    def test_summary_weighted_averages(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.derived-summary-weighted")
+    def test_summary_weighted_averages(self, tmp_path) -> None:
+        """Summary aggregation computes weighted averages correctly."""
+        from openjarvis.telemetry.aggregator import TelemetryAggregator
+
         store = TelemetryStore(tmp_path / "test.db")
         for i in range(3):
             store.record(TelemetryRecord(
@@ -187,5 +281,6 @@ class TestDerivedMetricsInStore:
         summary = agg.summary()
         assert summary.avg_energy_per_output_token_joules > 0
         assert summary.avg_throughput_per_watt > 0
+        assert summary.total_calls == 3
         agg.close()
         store.close()

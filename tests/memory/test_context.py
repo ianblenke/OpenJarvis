@@ -5,6 +5,8 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, List, Optional
 
+import pytest
+
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.types import Message, Role
 from openjarvis.tools.storage._stubs import MemoryBackend, RetrievalResult
@@ -56,6 +58,7 @@ class _FakeMemory(MemoryBackend):
 # -- Tests -------------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.context")
 def test_format_context_with_sources():
     results = [
         RetrievalResult(
@@ -75,10 +78,23 @@ def test_format_context_with_sources():
     assert "[Source: notes.txt]" in text
 
 
+@pytest.mark.spec("REQ-storage.context")
+def test_format_context_without_source():
+    """Exercise line 42: result with no source tag."""
+    results = [
+        RetrievalResult(content="No source info", score=1.0, source=""),
+    ]
+    text = format_context(results)
+    assert "No source info" in text
+    assert "[Source:" not in text
+
+
+@pytest.mark.spec("REQ-storage.context")
 def test_format_context_empty():
     assert format_context([]) == ""
 
 
+@pytest.mark.spec("REQ-storage.context")
 def test_build_context_message_role():
     results = [
         RetrievalResult(content="test", score=1.0, source="s.md"),
@@ -89,6 +105,7 @@ def test_build_context_message_role():
     assert "test" in msg.content
 
 
+@pytest.mark.spec("REQ-storage.context")
 def test_inject_context_adds_system_message():
     results = [
         RetrievalResult(
@@ -105,6 +122,7 @@ def test_inject_context_adds_system_message():
     assert "relevant info" in augmented[0].content
 
 
+@pytest.mark.spec("REQ-storage.context")
 def test_inject_context_filters_low_score():
     results = [
         RetrievalResult(content="low score", score=0.01),
@@ -119,6 +137,7 @@ def test_inject_context_filters_low_score():
     assert len(augmented) == 1
 
 
+@pytest.mark.spec("REQ-storage.context")
 def test_inject_context_respects_max_tokens():
     # Each result has ~100 tokens, max is 150 → only 1 should be included
     content = " ".join(f"word{i}" for i in range(100))
@@ -137,6 +156,7 @@ def test_inject_context_respects_max_tokens():
     assert augmented[0].content.count("[Source:") == 1
 
 
+@pytest.mark.spec("REQ-storage.context")
 def test_inject_context_disabled():
     results = [
         RetrievalResult(content="data", score=1.0),
@@ -150,6 +170,7 @@ def test_inject_context_disabled():
     assert len(augmented) == 1
 
 
+@pytest.mark.spec("REQ-storage.context")
 def test_inject_context_no_results_returns_original():
     backend = _FakeMemory([])
     messages = [Message(role=Role.USER, content="hello")]
@@ -157,6 +178,7 @@ def test_inject_context_no_results_returns_original():
     assert augmented is messages
 
 
+@pytest.mark.spec("REQ-storage.context")
 def test_inject_context_publishes_event():
     bus = EventBus(record_history=True)
     results = [
@@ -180,6 +202,27 @@ def test_inject_context_publishes_event():
         mod.get_event_bus = original
 
 
+@pytest.mark.spec("REQ-storage.context")
+def test_inject_context_first_result_exceeds_max_tokens():
+    """Exercise line 108: first result already exceeds max_context_tokens.
+
+    When even the first result is too large, truncated list is empty
+    and messages are returned unchanged.
+    """
+    huge_content = " ".join(f"word{i}" for i in range(500))
+    results = [
+        RetrievalResult(content=huge_content, score=1.0, source="big.md"),
+    ]
+    backend = _FakeMemory(results)
+    messages = [Message(role=Role.USER, content="query")]
+    cfg = ContextConfig(max_context_tokens=10)  # very small limit
+    augmented = inject_context("query", messages, backend, config=cfg)
+    # All results exceeded the token limit, so no context injected
+    assert len(augmented) == 1  # original messages only
+    assert augmented is messages
+
+
+@pytest.mark.spec("REQ-storage.context")
 def test_inject_context_does_not_mutate_original():
     results = [
         RetrievalResult(content="info", score=0.9, source="s.md"),

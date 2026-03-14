@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import threading
 
+import pytest
+
 from openjarvis.core.events import (
     Event,
     EventBus,
@@ -14,6 +16,7 @@ from openjarvis.core.events import (
 
 
 class TestEventBus:
+    @pytest.mark.spec("REQ-core.events.pubsub")
     def test_subscribe_and_publish(self) -> None:
         bus = EventBus()
         received: list[Event] = []
@@ -22,6 +25,7 @@ class TestEventBus:
         assert len(received) == 1
         assert received[0].data["model"] == "test"
 
+    @pytest.mark.spec("REQ-core.events.pubsub")
     def test_multiple_subscribers(self) -> None:
         bus = EventBus()
         a: list[Event] = []
@@ -32,6 +36,7 @@ class TestEventBus:
         assert len(a) == 1
         assert len(b) == 1
 
+    @pytest.mark.spec("REQ-core.events.pubsub")
     def test_unsubscribe(self) -> None:
         bus = EventBus()
         received: list[Event] = []
@@ -40,33 +45,39 @@ class TestEventBus:
         bus.publish(EventType.MEMORY_STORE)
         assert len(received) == 0
 
+    @pytest.mark.spec("REQ-core.events.pubsub")
     def test_unsubscribe_missing_callback_no_error(self) -> None:
         bus = EventBus()
         bus.unsubscribe(EventType.INFERENCE_START, lambda e: None)  # no-op
 
+    @pytest.mark.spec("REQ-core.events.history")
     def test_history_recording(self) -> None:
         bus = EventBus(record_history=True)
         bus.publish(EventType.INFERENCE_START)
         bus.publish(EventType.INFERENCE_END)
         assert len(bus.history) == 2
 
+    @pytest.mark.spec("REQ-core.events.history")
     def test_history_off_by_default(self) -> None:
         bus = EventBus()
         bus.publish(EventType.INFERENCE_START)
         assert len(bus.history) == 0
 
+    @pytest.mark.spec("REQ-core.events.history")
     def test_clear_history(self) -> None:
         bus = EventBus(record_history=True)
         bus.publish(EventType.AGENT_TURN_START)
         bus.clear_history()
         assert len(bus.history) == 0
 
+    @pytest.mark.spec("REQ-core.events.pubsub")
     def test_publish_returns_event(self) -> None:
         bus = EventBus()
         event = bus.publish(EventType.TELEMETRY_RECORD, {"k": "v"})
         assert isinstance(event, Event)
         assert event.event_type == EventType.TELEMETRY_RECORD
 
+    @pytest.mark.spec("REQ-core.events.pubsub")
     def test_different_event_types_isolated(self) -> None:
         bus = EventBus()
         a: list[Event] = []
@@ -74,6 +85,7 @@ class TestEventBus:
         bus.publish(EventType.INFERENCE_END)
         assert len(a) == 0
 
+    @pytest.mark.spec("REQ-core.events.thread-safety")
     def test_thread_safety(self) -> None:
         bus = EventBus(record_history=True)
         n = 100
@@ -93,12 +105,14 @@ class TestEventBus:
 
 
 class TestAgentEventTypes:
+    @pytest.mark.spec("REQ-core.events.event-types")
     def test_agent_tick_events_exist(self):
         from openjarvis.core.events import EventType
         assert EventType.AGENT_TICK_START
         assert EventType.AGENT_TICK_END
         assert EventType.AGENT_TICK_ERROR
 
+    @pytest.mark.spec("REQ-core.events.event-types")
     def test_agent_operational_events_exist(self):
         from openjarvis.core.events import EventType
         assert EventType.AGENT_BUDGET_EXCEEDED
@@ -108,12 +122,14 @@ class TestAgentEventTypes:
 
 
 class TestSingleton:
+    @pytest.mark.spec("REQ-core.events.singleton")
     def test_get_event_bus_returns_same_instance(self) -> None:
         reset_event_bus()
         a = get_event_bus()
         b = get_event_bus()
         assert a is b
 
+    @pytest.mark.spec("REQ-core.events.singleton")
     def test_reset_replaces_instance(self) -> None:
         reset_event_bus()
         a = get_event_bus()

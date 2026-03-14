@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import builtins
 import json
-from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.cli import cli
@@ -23,6 +23,7 @@ def _selective_import_blocker(*blocked: str):
 
 
 class TestDoctorOptionalLabels:
+    @pytest.mark.spec("REQ-cli.doctor")
     def test_labels_show_description(self) -> None:
         """Doctor output uses descriptive labels, not raw package names."""
         runner = CliRunner()
@@ -37,12 +38,13 @@ class TestDoctorOptionalLabels:
         assert "Optional: torch (for learning)" not in names
         assert "Optional: pynvml (GPU monitoring)" not in names
 
-    def test_labels_show_install_hint_on_missing(self) -> None:
+    @pytest.mark.spec("REQ-cli.doctor")
+    def test_labels_show_install_hint_on_missing(self, monkeypatch) -> None:
         """When a package is missing, show install hint in status."""
         blocker = _selective_import_blocker("zeus")
-        with mock.patch("builtins.__import__", side_effect=blocker):
-            runner = CliRunner()
-            result = runner.invoke(cli, ["doctor", "--json"])
+        monkeypatch.setattr(builtins, "__import__", blocker)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["doctor", "--json"])
         data = json.loads(result.output)
         apple_checks = [
             c for c in data

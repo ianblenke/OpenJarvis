@@ -2,12 +2,61 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from typing import Any, Dict
 
 from openjarvis.learning.intelligence.orchestrator.sft_trainer import (
     OrchestratorSFTConfig,
     OrchestratorSFTDataset,
 )
+
+# ---------------------------------------------------------------------------
+# Typed fakes (replacing MagicMock)
+# ---------------------------------------------------------------------------
+
+
+class _FakeTensor:
+    """Minimal fake tensor that supports squeeze(0) and clone()."""
+
+    def __init__(self, data: list) -> None:
+        self._data = data
+
+    def squeeze(self, dim: int = 0):
+        return _FakeTensor(self._data)
+
+    def clone(self):
+        return _FakeTensor(list(self._data))
+
+    def __len__(self):
+        return len(self._data)
+
+
+class _FakeTokenizer:
+    """Typed fake tokenizer for SFT dataset tests.
+
+    Supports eos_token and __call__ for tokenization.
+    Does NOT have apply_chat_template by default (to test fallback).
+    """
+
+    def __init__(self, eos_token: str = "</s>") -> None:
+        self.eos_token = eos_token
+
+    def __call__(self, text: str, **kwargs) -> Dict[str, Any]:
+        # Return fake tensors that support .squeeze(0)
+        tokens = text.split()
+        return {
+            "input_ids": _FakeTensor(list(range(len(tokens)))),
+            "attention_mask": _FakeTensor([1] * len(tokens)),
+        }
+
+
+class _FakeTokenizerWithTemplate(_FakeTokenizer):
+    """Fake tokenizer that has apply_chat_template."""
+
+    def apply_chat_template(self, messages, tokenize=False, **kwargs) -> str:
+        parts = []
+        for msg in messages:
+            parts.append(f"<|{msg['role']}|>\n{msg['content']}")
+        return "\n".join(parts)
 
 
 class TestOrchestratorSFTConfig:
@@ -38,7 +87,7 @@ class TestOrchestratorSFTConfig:
 
 class TestOrchestratorSFTDataset:
     def test_empty_on_missing_file(self):
-        tok = MagicMock()
+        tok = _FakeTokenizer()
         ds = OrchestratorSFTDataset(
             trace_path="/nonexistent/path.jsonl",
             tokenizer=tok,
@@ -58,9 +107,7 @@ class TestOrchestratorSFTDataset:
         }
         trace_file.write_text(json.dumps(trace) + "\n")
 
-        tok = MagicMock()
-        tok.eos_token = "</s>"
-        del tok.apply_chat_template  # no chat template
+        tok = _FakeTokenizer(eos_token="</s>")
 
         ds = OrchestratorSFTDataset(
             trace_path=str(trace_file),
@@ -76,9 +123,7 @@ class TestOrchestratorSFTDataset:
         assert text.endswith("</s>")
 
     def test_format_tool_message(self):
-        tok = MagicMock()
-        tok.eos_token = ""
-        del tok.apply_chat_template
+        tok = _FakeTokenizer(eos_token="")
 
         ds = OrchestratorSFTDataset(
             trace_path="/nonexistent",
@@ -107,13 +152,7 @@ class TestOrchestratorSFTDataset:
             "\n".join(json.dumps(t) for t in traces) + "\n"
         )
 
-        tok = MagicMock()
-        tok.eos_token = ""
-        del tok.apply_chat_template
-        tok.return_value = {
-            "input_ids": MagicMock(),
-            "attention_mask": MagicMock(),
-        }
+        tok = _FakeTokenizer(eos_token="")
 
         ds = OrchestratorSFTDataset(
             trace_path=str(trace_file),

@@ -1,20 +1,25 @@
 """Tests for the security_scanner dataset."""
 
+import pytest
+
 from openjarvis.evals.datasets.security_scanner import SecurityScannerDataset
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_dataset_loads():
     ds = SecurityScannerDataset()
     ds.load(max_samples=5, seed=42)
     assert ds.size() == 5
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_dataset_full_size():
     ds = SecurityScannerDataset()
     ds.load()
     assert ds.size() == 30
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_record_structure():
     ds = SecurityScannerDataset()
     ds.load(max_samples=1, seed=42)
@@ -28,6 +33,7 @@ def test_record_structure():
     assert record.metadata.get("safe_patterns") is not None
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_difficulty_tiers():
     ds = SecurityScannerDataset()
     ds.load()
@@ -37,6 +43,7 @@ def test_difficulty_tiers():
     assert "hard" in subjects
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_vulnerability_structure():
     ds = SecurityScannerDataset()
     ds.load(max_samples=1, seed=0)

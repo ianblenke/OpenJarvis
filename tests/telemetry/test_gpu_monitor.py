@@ -1,4 +1,4 @@
-"""Tests for GPU monitor -- mock pynvml (no real GPU required)."""
+"""Tests for GPU monitor -- fake pynvml (no real GPU required)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import sys
 import time
 import types
 from dataclasses import dataclass
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -28,25 +27,49 @@ class _FakeMemInfo:
     free: int = 12 * 1024**3
 
 
+class _CallTracker:
+    """Simple call tracker to replace MagicMock.assert_called()."""
+
+    def __init__(self, return_value=None, side_effect=None):
+        self._return_value = return_value
+        self._side_effect = side_effect
+        self._call_count = 0
+
+    def __call__(self, *args, **kwargs):
+        self._call_count += 1
+        if self._side_effect is not None:
+            if callable(self._side_effect):
+                return self._side_effect(*args, **kwargs)
+            raise self._side_effect
+        return self._return_value
+
+    def assert_called(self):
+        assert self._call_count > 0, "Expected to be called but was not"
+
+
 def _make_fake_pynvml(
-    device_count: int = 1, power_mw: int = 300_000
+    device_count: int = 1, power_mw: int = 300_000,
+    init_error=None,
 ):
-    """Return a fake pynvml module object."""
+    """Return a fake pynvml module object with typed callables."""
     mod = types.ModuleType("pynvml")
-    mod.nvmlInit = MagicMock()
-    mod.nvmlShutdown = MagicMock()
-    mod.nvmlDeviceGetCount = MagicMock(return_value=device_count)
-    mod.nvmlDeviceGetHandleByIndex = MagicMock(
+    if init_error:
+        mod.nvmlInit = _CallTracker(side_effect=init_error)
+    else:
+        mod.nvmlInit = _CallTracker()
+    mod.nvmlShutdown = _CallTracker()
+    mod.nvmlDeviceGetCount = _CallTracker(return_value=device_count)
+    mod.nvmlDeviceGetHandleByIndex = _CallTracker(
         side_effect=lambda i: f"handle-{i}"
     )
-    mod.nvmlDeviceGetPowerUsage = MagicMock(return_value=power_mw)
-    mod.nvmlDeviceGetUtilizationRates = MagicMock(
+    mod.nvmlDeviceGetPowerUsage = _CallTracker(return_value=power_mw)
+    mod.nvmlDeviceGetUtilizationRates = _CallTracker(
         return_value=_FakeUtilization()
     )
-    mod.nvmlDeviceGetMemoryInfo = MagicMock(
+    mod.nvmlDeviceGetMemoryInfo = _CallTracker(
         return_value=_FakeMemInfo()
     )
-    mod.nvmlDeviceGetTemperature = MagicMock(return_value=65)
+    mod.nvmlDeviceGetTemperature = _CallTracker(return_value=65)
     mod.NVML_TEMPERATURE_GPU = 0
     return mod
 
@@ -72,6 +95,7 @@ def _snap(
 
 
 class TestGpuHardwareSpec:
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_lookup_exact_key(self):
         from openjarvis.telemetry.gpu_monitor import lookup_gpu_spec
 
@@ -81,6 +105,7 @@ class TestGpuHardwareSpec:
         assert spec.bandwidth_gb_s == 2039
         assert spec.tdp_watts == 400
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_lookup_substring_match(self):
         from openjarvis.telemetry.gpu_monitor import lookup_gpu_spec
 
@@ -88,6 +113,7 @@ class TestGpuHardwareSpec:
         assert spec is not None
         assert spec.tflops_fp16 == 990
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_lookup_case_insensitive(self):
         from openjarvis.telemetry.gpu_monitor import lookup_gpu_spec
 
@@ -95,11 +121,13 @@ class TestGpuHardwareSpec:
         assert spec is not None
         assert spec.tflops_fp16 == 165
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_lookup_unknown_returns_none(self):
         from openjarvis.telemetry.gpu_monitor import lookup_gpu_spec
 
         assert lookup_gpu_spec("SOME-UNKNOWN-GPU-9999") is None
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_all_specs_present(self):
         from openjarvis.telemetry.gpu_monitor import GPU_SPECS
 
@@ -114,6 +142,7 @@ class TestGpuHardwareSpec:
         }
         assert set(GPU_SPECS.keys()) == expected
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_spec_is_frozen(self):
         from openjarvis.telemetry.gpu_monitor import GPU_SPECS
 
@@ -128,6 +157,7 @@ class TestGpuHardwareSpec:
 
 
 class TestEnergyIntegration:
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_constant_power(self):
         """Constant 300W for 10 seconds = 3000 J."""
         from openjarvis.telemetry.gpu_monitor import GpuMonitor
@@ -147,6 +177,7 @@ class TestEnergyIntegration:
         assert sample.duration_seconds == 10.0
         assert sample.num_snapshots == 11
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_linear_ramp(self):
         """Linear ramp 0W..400W over 4s => 800 J (trapezoidal)."""
         from openjarvis.telemetry.gpu_monitor import GpuMonitor
@@ -164,6 +195,7 @@ class TestEnergyIntegration:
         assert sample.mean_power_watts == pytest.approx(200.0, rel=1e-6)
         assert sample.peak_power_watts == pytest.approx(400.0)
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_empty_snapshots(self):
         """No snapshots yields zeroed sample."""
         from openjarvis.telemetry.gpu_monitor import GpuMonitor
@@ -173,6 +205,7 @@ class TestEnergyIntegration:
         assert sample.num_snapshots == 0
         assert sample.duration_seconds == 5.0
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_single_snapshot(self):
         """One snapshot: energy is zero (no interval)."""
         from openjarvis.telemetry.gpu_monitor import GpuMonitor
@@ -196,6 +229,7 @@ class TestEnergyIntegration:
 
 
 class TestGpuSampleAggregation:
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_peak_values(self):
         from openjarvis.telemetry.gpu_monitor import GpuMonitor
 
@@ -214,6 +248,7 @@ class TestGpuSampleAggregation:
         assert sample.peak_memory_used_gb == pytest.approx(20.0)
         assert sample.peak_temperature_c == pytest.approx(80.0)
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_mean_values(self):
         from openjarvis.telemetry.gpu_monitor import GpuMonitor
 
@@ -239,6 +274,7 @@ class TestGpuSampleAggregation:
 
 
 class TestMultiGpu:
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_multi_device_power_sum(self):
         """Power summed across devices; util/temp averaged."""
         from openjarvis.telemetry.gpu_monitor import GpuMonitor
@@ -259,6 +295,7 @@ class TestMultiGpu:
         assert sample.mean_memory_used_gb == pytest.approx(22.0)
         assert sample.mean_temperature_c == pytest.approx(65.0)
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_multi_device_varying_power(self):
         """Multi-GPU with varying power over time."""
         from openjarvis.telemetry.gpu_monitor import GpuMonitor
@@ -289,6 +326,7 @@ class TestMultiGpu:
 
 
 class TestContextManager:
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_sample_context_manager(self):
         """sample() starts/stops polling and populates result."""
         fake_pynvml = _make_fake_pynvml(
@@ -318,6 +356,7 @@ class TestContextManager:
             if orig_pynvml is not None:
                 mod.pynvml = orig_pynvml
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_sample_no_gpu(self):
         """sample() yields empty GpuSample when no GPU."""
         from openjarvis.telemetry.gpu_monitor import GpuMonitor
@@ -342,6 +381,7 @@ class TestContextManager:
 
 
 class TestAvailable:
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_available_false_when_pynvml_missing(self):
         """available() returns False when pynvml not importable."""
         import openjarvis.telemetry.gpu_monitor as mod
@@ -353,38 +393,41 @@ class TestAvailable:
         finally:
             mod._PYNVML_AVAILABLE = orig
 
-    def test_available_true_with_fake_pynvml(self):
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
+    def test_available_true_with_fake_pynvml(self, monkeypatch):
         """available() returns True when pynvml can init."""
         fake_pynvml = _make_fake_pynvml()
+        monkeypatch.setitem(sys.modules, "pynvml", fake_pynvml)
 
-        with patch.dict(sys.modules, {"pynvml": fake_pynvml}):
-            import openjarvis.telemetry.gpu_monitor as mod
+        import openjarvis.telemetry.gpu_monitor as mod
 
-            orig = mod._PYNVML_AVAILABLE
-            mod._PYNVML_AVAILABLE = True
-            mod.pynvml = fake_pynvml
-            try:
-                assert mod.GpuMonitor.available() is True
-                fake_pynvml.nvmlInit.assert_called()
-                fake_pynvml.nvmlShutdown.assert_called()
-            finally:
-                mod._PYNVML_AVAILABLE = orig
+        orig = mod._PYNVML_AVAILABLE
+        mod._PYNVML_AVAILABLE = True
+        mod.pynvml = fake_pynvml
+        try:
+            assert mod.GpuMonitor.available() is True
+            fake_pynvml.nvmlInit.assert_called()
+            fake_pynvml.nvmlShutdown.assert_called()
+        finally:
+            mod._PYNVML_AVAILABLE = orig
 
-    def test_available_false_when_init_fails(self):
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
+    def test_available_false_when_init_fails(self, monkeypatch):
         """available() returns False when nvmlInit raises."""
-        fake_pynvml = _make_fake_pynvml()
-        fake_pynvml.nvmlInit.side_effect = RuntimeError("no driver")
+        fake_pynvml = _make_fake_pynvml(
+            init_error=RuntimeError("no driver"),
+        )
+        monkeypatch.setitem(sys.modules, "pynvml", fake_pynvml)
 
-        with patch.dict(sys.modules, {"pynvml": fake_pynvml}):
-            import openjarvis.telemetry.gpu_monitor as mod
+        import openjarvis.telemetry.gpu_monitor as mod
 
-            orig = mod._PYNVML_AVAILABLE
-            mod._PYNVML_AVAILABLE = True
-            mod.pynvml = fake_pynvml
-            try:
-                assert mod.GpuMonitor.available() is False
-            finally:
-                mod._PYNVML_AVAILABLE = orig
+        orig = mod._PYNVML_AVAILABLE
+        mod._PYNVML_AVAILABLE = True
+        mod.pynvml = fake_pynvml
+        try:
+            assert mod.GpuMonitor.available() is False
+        finally:
+            mod._PYNVML_AVAILABLE = orig
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +436,7 @@ class TestAvailable:
 
 
 class TestDataclasses:
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_gpu_snapshot_defaults(self):
         from openjarvis.telemetry.gpu_monitor import GpuSnapshot
 
@@ -404,6 +448,7 @@ class TestDataclasses:
         )
         assert s.device_id == 0
 
+    @pytest.mark.spec("REQ-telemetry.gpu-monitor")
     def test_gpu_sample_defaults(self):
         from openjarvis.telemetry.gpu_monitor import GpuSample
 

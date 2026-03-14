@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import pytest
 
 try:
     import tomllib
@@ -20,6 +20,7 @@ from openjarvis.optimize.types import (
     TrialFeedback,
     TrialResult,
 )
+from tests.fixtures.optimizers import FakeOptimizer, FakeTrialRunner
 
 
 def _sample_search_space() -> SearchSpace:
@@ -90,11 +91,12 @@ def _sample_trial_result(
 class TestOptimizationEngineInit:
     """Tests for OptimizationEngine.__init__."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_stores_all_params(self) -> None:
         space = _sample_search_space()
-        optimizer = MagicMock()
-        runner = MagicMock()
-        store = MagicMock()
+        optimizer = FakeOptimizer()
+        runner = FakeTrialRunner()
+        store = OptimizationStore(":memory:")
 
         engine = OptimizationEngine(
             search_space=space,
@@ -111,12 +113,14 @@ class TestOptimizationEngineInit:
         assert engine.store is store
         assert engine.max_trials == 10
         assert engine.early_stop_patience == 3
+        store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_default_params(self) -> None:
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
-            llm_optimizer=MagicMock(),
-            trial_runner=MagicMock(),
+            llm_optimizer=FakeOptimizer(),
+            trial_runner=FakeTrialRunner(),
         )
         assert engine.store is None
         assert engine.max_trials == 20
@@ -124,37 +128,37 @@ class TestOptimizationEngineInit:
 
 
 # ---------------------------------------------------------------------------
-# run() with mocked dependencies
+# run() with typed fakes
 # ---------------------------------------------------------------------------
 
 
 class TestOptimizationEngineRun:
     """Tests for OptimizationEngine.run()."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_basic_run(self) -> None:
         space = _sample_search_space()
-        optimizer = MagicMock()
-        runner = MagicMock()
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(
+                trial_id="init",
+                params={"agent.type": "orchestrator"},
+            ),
+            next_configs=[
+                TrialConfig(
+                    trial_id="next",
+                    params={"agent.type": "simple"},
+                ),
+            ],
+            feedback=TrialFeedback(summary_text="analysis text"),
+        )
 
-        initial_config = TrialConfig(
-            trial_id="init",
-            params={"agent.type": "orchestrator"},
+        runner = FakeTrialRunner(
+            benchmark="supergpqa",
+            results=[
+                _sample_trial_result("init", accuracy=0.8),
+                _sample_trial_result("next", accuracy=0.85),
+            ],
         )
-        second_config = TrialConfig(
-            trial_id="next",
-            params={"agent.type": "simple"},
-        )
-        optimizer.propose_initial.return_value = initial_config
-        optimizer.propose_next.return_value = second_config
-        optimizer.analyze_trial.return_value = TrialFeedback(
-            summary_text="analysis text",
-        )
-        optimizer.optimizer_model = "test-model"
-
-        runner.run_trial.return_value = _sample_trial_result(
-            "init", accuracy=0.8,
-        )
-        runner.benchmark = "supergpqa"
 
         engine = OptimizationEngine(
             search_space=space,
@@ -163,12 +167,6 @@ class TestOptimizationEngineRun:
             max_trials=2,
         )
 
-        # Make second trial return different accuracy
-        runner.run_trial.side_effect = [
-            _sample_trial_result("init", accuracy=0.8),
-            _sample_trial_result("next", accuracy=0.85),
-        ]
-
         result = engine.run()
 
         assert isinstance(result, OptimizationRun)
@@ -176,23 +174,23 @@ class TestOptimizationEngineRun:
         assert len(result.trials) == 2
         assert result.best_trial is not None
         assert result.best_trial.accuracy == 0.85
-        assert result.optimizer_model == "test-model"
+        assert result.optimizer_model == "fake-model"
         assert result.benchmark == "supergpqa"
 
-        optimizer.propose_initial.assert_called_once()
-        assert runner.run_trial.call_count == 2
-        assert optimizer.analyze_trial.call_count == 2
+        assert optimizer.propose_initial_count == 1
+        assert runner.call_count == 2
+        assert optimizer.analyze_trial_count == 2
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_single_trial(self) -> None:
-        optimizer = MagicMock()
-        runner = MagicMock()
-
-        config = TrialConfig(trial_id="only", params={})
-        optimizer.propose_initial.return_value = config
-        optimizer.analyze_trial.return_value = TrialFeedback(summary_text="good")
-        optimizer.optimizer_model = "m"
-        runner.run_trial.return_value = _sample_trial_result("only", 0.9)
-        runner.benchmark = "test"
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(trial_id="only", params={}),
+            feedback=TrialFeedback(summary_text="good"),
+        )
+        runner = FakeTrialRunner(
+            benchmark="test",
+            results=[_sample_trial_result("only", 0.9)],
+        )
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -205,21 +203,18 @@ class TestOptimizationEngineRun:
         assert len(result.trials) == 1
         assert result.best_trial.accuracy == 0.9
         # propose_next should NOT be called when max_trials=1
-        optimizer.propose_next.assert_not_called()
+        assert optimizer.propose_next_count == 0
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_analysis_text_set_on_result(self) -> None:
-        optimizer = MagicMock()
-        runner = MagicMock()
-
-        optimizer.propose_initial.return_value = TrialConfig(
-            trial_id="t1", params={},
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(trial_id="t1", params={}),
+            feedback=TrialFeedback(summary_text="detailed analysis"),
         )
-        optimizer.analyze_trial.return_value = TrialFeedback(
-            summary_text="detailed analysis",
+        runner = FakeTrialRunner(
+            benchmark="b",
+            results=[_sample_trial_result("t1", 0.8)],
         )
-        optimizer.optimizer_model = "m"
-        runner.run_trial.return_value = _sample_trial_result("t1", 0.8)
-        runner.benchmark = "b"
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -231,15 +226,12 @@ class TestOptimizationEngineRun:
 
         assert result.trials[0].analysis == "detailed analysis"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_run_without_summary_skips_analysis(self) -> None:
         """If trial result has no summary, analysis should be empty."""
-        optimizer = MagicMock()
-        runner = MagicMock()
-
-        optimizer.propose_initial.return_value = TrialConfig(
-            trial_id="t1", params={},
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(trial_id="t1", params={}),
         )
-        optimizer.optimizer_model = "m"
 
         # Result with no summary
         result_no_summary = TrialResult(
@@ -248,8 +240,10 @@ class TestOptimizationEngineRun:
             accuracy=0.5,
             summary=None,
         )
-        runner.run_trial.return_value = result_no_summary
-        runner.benchmark = "b"
+        runner = FakeTrialRunner(
+            benchmark="b",
+            results=[result_no_summary],
+        )
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -260,7 +254,7 @@ class TestOptimizationEngineRun:
         run = engine.run()
 
         assert run.trials[0].analysis == ""
-        optimizer.analyze_trial.assert_not_called()
+        assert optimizer.analyze_trial_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -271,26 +265,24 @@ class TestOptimizationEngineRun:
 class TestEarlyStopping:
     """Tests for early stopping behavior."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_early_stop_after_patience(self) -> None:
-        optimizer = MagicMock()
-        runner = MagicMock()
-
-        optimizer.propose_initial.return_value = TrialConfig(
-            trial_id="t0", params={},
-        )
-        optimizer.propose_next.side_effect = [
+        next_configs = [
             TrialConfig(trial_id=f"t{i}", params={})
             for i in range(1, 20)
         ]
-        optimizer.analyze_trial.return_value = TrialFeedback(summary_text="ok")
-        optimizer.optimizer_model = "m"
-        runner.benchmark = "b"
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(trial_id="t0", params={}),
+            next_configs=next_configs,
+            feedback=TrialFeedback(summary_text="ok"),
+        )
 
         # First trial is the best; all subsequent are worse
         results = [_sample_trial_result("t0", accuracy=0.9)]
         for i in range(1, 20):
             results.append(_sample_trial_result(f"t{i}", accuracy=0.5))
-        runner.run_trial.side_effect = results
+
+        runner = FakeTrialRunner(benchmark="b", results=results)
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -306,20 +298,17 @@ class TestEarlyStopping:
         assert run.best_trial.trial_id == "t0"
         assert run.status == "completed"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_no_early_stop_when_improving(self) -> None:
-        optimizer = MagicMock()
-        runner = MagicMock()
-
-        optimizer.propose_initial.return_value = TrialConfig(
-            trial_id="t0", params={},
-        )
-        optimizer.propose_next.side_effect = [
+        next_configs = [
             TrialConfig(trial_id=f"t{i}", params={})
             for i in range(1, 5)
         ]
-        optimizer.analyze_trial.return_value = TrialFeedback(summary_text="ok")
-        optimizer.optimizer_model = "m"
-        runner.benchmark = "b"
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(trial_id="t0", params={}),
+            next_configs=next_configs,
+            feedback=TrialFeedback(summary_text="ok"),
+        )
 
         # Accuracy keeps improving
         results = [
@@ -329,7 +318,7 @@ class TestEarlyStopping:
             _sample_trial_result("t3", accuracy=0.8),
             _sample_trial_result("t4", accuracy=0.9),
         ]
-        runner.run_trial.side_effect = results
+        runner = FakeTrialRunner(benchmark="b", results=results)
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -352,28 +341,28 @@ class TestEarlyStopping:
 class TestProgressCallback:
     """Tests for progress_callback."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_callback_called(self) -> None:
-        optimizer = MagicMock()
-        runner = MagicMock()
-
-        optimizer.propose_initial.return_value = TrialConfig(
-            trial_id="t0", params={},
-        )
-        optimizer.propose_next.side_effect = [
+        next_configs = [
             TrialConfig(trial_id=f"t{i}", params={})
             for i in range(1, 3)
         ]
-        optimizer.analyze_trial.return_value = TrialFeedback(summary_text="ok")
-        optimizer.optimizer_model = "m"
-        runner.benchmark = "b"
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(trial_id="t0", params={}),
+            next_configs=next_configs,
+            feedback=TrialFeedback(summary_text="ok"),
+        )
 
         results = [
             _sample_trial_result(f"t{i}", accuracy=0.5 + i * 0.1)
             for i in range(3)
         ]
-        runner.run_trial.side_effect = results
+        runner = FakeTrialRunner(benchmark="b", results=results)
 
-        callback = MagicMock()
+        callback_calls: list[tuple[int, int]] = []
+
+        def callback(trial_num: int, max_trials: int) -> None:
+            callback_calls.append((trial_num, max_trials))
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -383,23 +372,22 @@ class TestProgressCallback:
         )
         engine.run(progress_callback=callback)
 
-        assert callback.call_count == 3
-        callback.assert_any_call(1, 3)
-        callback.assert_any_call(2, 3)
-        callback.assert_any_call(3, 3)
+        assert len(callback_calls) == 3
+        assert (1, 3) in callback_calls
+        assert (2, 3) in callback_calls
+        assert (3, 3) in callback_calls
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_no_callback(self) -> None:
         """run() should work fine without a callback."""
-        optimizer = MagicMock()
-        runner = MagicMock()
-
-        optimizer.propose_initial.return_value = TrialConfig(
-            trial_id="t0", params={},
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(trial_id="t0", params={}),
+            feedback=TrialFeedback(summary_text="ok"),
         )
-        optimizer.analyze_trial.return_value = TrialFeedback(summary_text="ok")
-        optimizer.optimizer_model = "m"
-        runner.run_trial.return_value = _sample_trial_result("t0", 0.8)
-        runner.benchmark = "b"
+        runner = FakeTrialRunner(
+            benchmark="b",
+            results=[_sample_trial_result("t0", 0.8)],
+        )
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -419,11 +407,12 @@ class TestProgressCallback:
 class TestExportBestRecipe:
     """Tests for export_best_recipe."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_exports_valid_toml(self, tmp_path) -> None:
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
-            llm_optimizer=MagicMock(),
-            trial_runner=MagicMock(),
+            llm_optimizer=FakeOptimizer(),
+            trial_runner=FakeTrialRunner(),
         )
 
         best = _sample_trial_result("best", accuracy=0.95)
@@ -465,11 +454,12 @@ class TestExportBestRecipe:
         assert data["agent"]["tools"] == ["calculator", "think"]
         assert data["learning"]["routing"] == "grpo"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_export_creates_parent_dirs(self, tmp_path) -> None:
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
-            llm_optimizer=MagicMock(),
-            trial_runner=MagicMock(),
+            llm_optimizer=FakeOptimizer(),
+            trial_runner=FakeTrialRunner(),
         )
 
         best = _sample_trial_result("best", accuracy=0.9)
@@ -484,11 +474,12 @@ class TestExportBestRecipe:
         result_path = engine.export_best_recipe(run, path)
         assert result_path.exists()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_export_no_best_trial_raises(self, tmp_path) -> None:
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
-            llm_optimizer=MagicMock(),
-            trial_runner=MagicMock(),
+            llm_optimizer=FakeOptimizer(),
+            trial_runner=FakeTrialRunner(),
         )
 
         run = OptimizationRun(
@@ -503,12 +494,13 @@ class TestExportBestRecipe:
         except ValueError as e:
             assert "No best trial" in str(e)
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_export_minimal_params(self, tmp_path) -> None:
         """Export with minimal params should still produce valid TOML."""
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
-            llm_optimizer=MagicMock(),
-            trial_runner=MagicMock(),
+            llm_optimizer=FakeOptimizer(),
+            trial_runner=FakeTrialRunner(),
         )
 
         config = TrialConfig(trial_id="min", params={})
@@ -538,25 +530,22 @@ class TestExportBestRecipe:
 class TestRunWithStore:
     """Tests for run() with a real OptimizationStore."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_saves_trials_and_run(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
-        optimizer = MagicMock()
-        runner = MagicMock()
-
-        optimizer.propose_initial.return_value = TrialConfig(
-            trial_id="t0", params={},
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(trial_id="t0", params={}),
+            next_configs=[TrialConfig(trial_id="t1", params={})],
+            feedback=TrialFeedback(summary_text="analysis"),
         )
-        optimizer.propose_next.return_value = TrialConfig(
-            trial_id="t1", params={},
-        )
-        optimizer.analyze_trial.return_value = TrialFeedback(summary_text="analysis")
-        optimizer.optimizer_model = "m"
-        runner.benchmark = "b"
 
-        runner.run_trial.side_effect = [
-            _sample_trial_result("t0", accuracy=0.7),
-            _sample_trial_result("t1", accuracy=0.8),
-        ]
+        runner = FakeTrialRunner(
+            benchmark="b",
+            results=[
+                _sample_trial_result("t0", accuracy=0.7),
+                _sample_trial_result("t1", accuracy=0.8),
+            ],
+        )
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -579,17 +568,16 @@ class TestRunWithStore:
 
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_no_store_does_not_error(self) -> None:
-        optimizer = MagicMock()
-        runner = MagicMock()
-
-        optimizer.propose_initial.return_value = TrialConfig(
-            trial_id="t0", params={},
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(trial_id="t0", params={}),
+            feedback=TrialFeedback(summary_text="ok"),
         )
-        optimizer.analyze_trial.return_value = TrialFeedback(summary_text="ok")
-        optimizer.optimizer_model = "m"
-        runner.run_trial.return_value = _sample_trial_result("t0", 0.8)
-        runner.benchmark = "b"
+        runner = FakeTrialRunner(
+            benchmark="b",
+            results=[_sample_trial_result("t0", 0.8)],
+        )
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -610,6 +598,7 @@ class TestRunWithStore:
 class TestLoadOptimizeConfig:
     """Tests for load_optimize_config."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_loads_toml_file(self, tmp_path) -> None:
         from openjarvis.optimize.config import load_optimize_config
 
@@ -635,6 +624,7 @@ engine = "ollama"
         assert len(config["optimize"]["search"]) == 1
         assert config["optimize"]["fixed"]["engine"] == "ollama"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_file_not_found(self, tmp_path) -> None:
         from openjarvis.optimize.config import load_optimize_config
 
@@ -644,6 +634,7 @@ engine = "ollama"
         except FileNotFoundError:
             pass
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_loads_string_path(self, tmp_path) -> None:
         from openjarvis.optimize.config import load_optimize_config
 
@@ -657,27 +648,21 @@ engine = "ollama"
 class TestParetoFrontier:
     """Tests for Pareto frontier in the run loop."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_pareto_frontier_populated_after_run(self) -> None:
-        optimizer = MagicMock()
-        runner = MagicMock()
+        optimizer = FakeOptimizer(
+            initial_config=TrialConfig(trial_id="t0", params={}),
+            next_configs=[TrialConfig(trial_id="t1", params={})],
+            feedback=TrialFeedback(summary_text="analysis"),
+        )
 
-        optimizer.propose_initial.return_value = TrialConfig(
-            trial_id="t0", params={},
+        runner = FakeTrialRunner(
+            benchmark="b",
+            results=[
+                _sample_trial_result("t0", accuracy=0.8),
+                _sample_trial_result("t1", accuracy=0.9),
+            ],
         )
-        optimizer.propose_next.return_value = TrialConfig(
-            trial_id="t1", params={},
-        )
-        # analyze_trial returns TrialFeedback
-        optimizer.analyze_trial.return_value = TrialFeedback(
-            summary_text="analysis",
-        )
-        optimizer.optimizer_model = "m"
-        runner.benchmark = "b"
-
-        runner.run_trial.side_effect = [
-            _sample_trial_result("t0", accuracy=0.8),
-            _sample_trial_result("t1", accuracy=0.9),
-        ]
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -696,20 +681,12 @@ class TestParetoFrontier:
 class TestTargetedAndMerge:
     """Tests for targeted mutation and merge in the run loop."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_targeted_proposal_used_when_target_primitive_set(self) -> None:
-        optimizer = MagicMock()
-        runner = MagicMock()
-
         configs = [
             TrialConfig(trial_id=f"t{i}", params={})
             for i in range(5)
         ]
-        optimizer.propose_initial.return_value = configs[0]
-        optimizer.propose_next.side_effect = configs[1:]
-        optimizer.propose_targeted.return_value = configs[3]
-        optimizer.optimizer_model = "m"
-        runner.benchmark = "b"
-
         # Trials 0-2: normal. Trial 2 feedback has target_primitive
         fb_normal = TrialFeedback(summary_text="ok")
         fb_targeted = TrialFeedback(
@@ -717,18 +694,23 @@ class TestTargetedAndMerge:
             target_primitive="agent",
         )
 
-        optimizer.analyze_trial.side_effect = [
-            fb_normal,   # trial 0
-            fb_normal,   # trial 1
-            fb_targeted, # trial 2 -> will trigger targeted on next
-            fb_normal,   # trial 3
-        ]
+        optimizer = FakeOptimizer(
+            initial_config=configs[0],
+            next_configs=configs[1:],
+            feedbacks=[
+                fb_normal,   # trial 0
+                fb_normal,   # trial 1
+                fb_targeted, # trial 2 -> will trigger targeted on next
+                fb_normal,   # trial 3
+            ],
+            targeted_config=configs[3],
+        )
 
         results = [
             _sample_trial_result(f"t{i}", accuracy=0.5 + i * 0.05)
             for i in range(4)
         ]
-        runner.run_trial.side_effect = results
+        runner = FakeTrialRunner(benchmark="b", results=results)
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -739,24 +721,20 @@ class TestTargetedAndMerge:
         engine.run()
 
         # After trial 2 (trial_num=3, > 2), targeted should be used
-        assert optimizer.propose_targeted.called
+        assert optimizer.propose_targeted_count > 0
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_merge_triggered_periodically(self) -> None:
-        optimizer = MagicMock()
-        runner = MagicMock()
-
         configs = [
             TrialConfig(trial_id=f"t{i}", params={})
             for i in range(7)
         ]
-        optimizer.propose_initial.return_value = configs[0]
-        optimizer.propose_next.side_effect = configs[1:]
-        optimizer.propose_merge.return_value = configs[5]
-        optimizer.optimizer_model = "m"
-        runner.benchmark = "b"
-
-        fb = TrialFeedback(summary_text="ok")
-        optimizer.analyze_trial.return_value = fb
+        optimizer = FakeOptimizer(
+            initial_config=configs[0],
+            next_configs=configs[1:],
+            feedback=TrialFeedback(summary_text="ok"),
+            merge_config=configs[5],
+        )
 
         # Create diverse results with genuine tradeoffs so
         # frontier has >= 2 members (high acc/high lat vs low acc/low lat)
@@ -774,7 +752,7 @@ class TestTargetedAndMerge:
             r.mean_latency_seconds = lat
             r.total_cost_usd = cost
             results.append(r)
-        runner.run_trial.side_effect = results
+        runner = FakeTrialRunner(benchmark="b", results=results)
 
         engine = OptimizationEngine(
             search_space=_sample_search_space(),
@@ -785,4 +763,4 @@ class TestTargetedAndMerge:
         engine.run()
 
         # Merge should be triggered at trial_num=5
-        assert optimizer.propose_merge.called
+        assert optimizer.propose_merge_count > 0

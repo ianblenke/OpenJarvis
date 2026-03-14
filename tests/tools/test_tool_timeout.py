@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.types import ToolCall, ToolResult
 from openjarvis.tools._stubs import BaseTool, ToolExecutor, ToolSpec
@@ -52,6 +54,7 @@ class FastTool(BaseTool):
 
 
 class TestToolTimeout:
+    @pytest.mark.spec("REQ-tools.executor.timeout")
     def test_fast_tool_succeeds(self):
         executor = ToolExecutor([FastTool()])
         call = ToolCall(id="1", name="fast_tool", arguments='{"input": "hello"}')
@@ -59,6 +62,7 @@ class TestToolTimeout:
         assert result.success
         assert "hello" in result.content
 
+    @pytest.mark.spec("REQ-tools.executor.timeout")
     def test_slow_tool_times_out(self):
         executor = ToolExecutor([SlowTool(delay=5.0)])
         call = ToolCall(id="1", name="slow_tool", arguments="{}")
@@ -66,6 +70,7 @@ class TestToolTimeout:
         assert not result.success
         assert "timed out" in result.content
 
+    @pytest.mark.spec("REQ-tools.executor.timeout")
     def test_timeout_event_emitted(self):
         bus = EventBus(record_history=True)
         executor = ToolExecutor([SlowTool(delay=5.0)], bus=bus)
@@ -78,6 +83,7 @@ class TestToolTimeout:
         assert len(timeout_events) == 1
         assert timeout_events[0].data["tool"] == "slow_tool"
 
+    @pytest.mark.spec("REQ-tools.executor.timeout")
     def test_default_timeout_used(self):
         """When ToolSpec has no timeout, the executor default is used."""
 
@@ -100,10 +106,12 @@ class TestToolTimeout:
         result = executor.execute(call)
         assert result.success
 
+    @pytest.mark.spec("REQ-tools.executor.timeout")
     def test_timeout_seconds_on_toolspec(self):
         spec = ToolSpec(name="test", description="test", timeout_seconds=42.0)
         assert spec.timeout_seconds == 42.0
 
+    @pytest.mark.spec("REQ-tools.executor.timeout")
     def test_unknown_tool(self):
         executor = ToolExecutor([FastTool()])
         call = ToolCall(id="1", name="nonexistent", arguments="{}")

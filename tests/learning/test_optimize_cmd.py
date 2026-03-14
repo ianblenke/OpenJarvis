@@ -13,12 +13,14 @@ from openjarvis.cli import cli
 class TestOptimizeCmd:
     """CLI smoke tests for the optimize command group."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_optimize_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["optimize", "--help"])
         assert result.exit_code == 0
         assert "optimization" in result.output.lower()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_optimize_run_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["optimize", "run", "--help"])
@@ -29,18 +31,21 @@ class TestOptimizeCmd:
         assert "--max-samples" in result.output
         assert "--output-dir" in result.output
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_optimize_status_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["optimize", "status", "--help"])
         assert result.exit_code == 0
         assert "status" in result.output.lower()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_optimize_results_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["optimize", "results", "--help"])
         assert result.exit_code == 0
         assert "RUN_ID" in result.output
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_optimize_best_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["optimize", "best", "--help"])
@@ -48,6 +53,7 @@ class TestOptimizeCmd:
         assert "RUN_ID" in result.output
         assert "--output" in result.output
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_optimize_personal_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["optimize", "personal", "--help"])
@@ -59,12 +65,14 @@ class TestOptimizeCmd:
 class TestFeedbackCmd:
     """CLI smoke tests for the feedback command group."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_feedback_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["feedback", "--help"])
         assert result.exit_code == 0
         assert "feedback" in result.output.lower()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_feedback_score_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["feedback", "score", "--help"])
@@ -72,6 +80,7 @@ class TestFeedbackCmd:
         assert "TRACE_ID" in result.output
         assert "--score" in result.output
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_feedback_thumbs_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["feedback", "thumbs", "--help"])
@@ -79,12 +88,14 @@ class TestFeedbackCmd:
         assert "--last" in result.output
         assert "--up" in result.output
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_feedback_evaluate_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["feedback", "evaluate", "--help"])
         assert result.exit_code == 0
         assert "--since" in result.output
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_feedback_stats_help(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["feedback", "stats", "--help"])
@@ -94,6 +105,7 @@ class TestFeedbackCmd:
 class TestOptimizeConfig:
     """Tests for OptimizeConfig in JarvisConfig."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_optimize_config_in_jarvis_config(self):
         from openjarvis.core.config import JarvisConfig, OptimizeConfig
 
@@ -106,6 +118,7 @@ class TestOptimizeConfig:
         assert cfg.optimize.benchmark == ""
         assert cfg.optimize.max_samples == 50
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_optimize_config_defaults(self):
         from openjarvis.core.config import OptimizeConfig
 
@@ -119,6 +132,7 @@ class TestOptimizeConfig:
 class TestNewEventTypes:
     """Tests for new event types added in Phase 25."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_optimize_event_types_exist(self):
         from openjarvis.core.events import EventType
 
@@ -127,6 +141,7 @@ class TestNewEventTypes:
         assert EventType.OPTIMIZE_TRIAL_END == "optimize_trial_end"
         assert EventType.OPTIMIZE_RUN_END == "optimize_run_end"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_feedback_event_type_exists(self):
         from openjarvis.core.events import EventType
 
@@ -136,6 +151,7 @@ class TestNewEventTypes:
 class TestTraceStoreUpdateFeedback:
     """Tests for TraceStore.update_feedback."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_update_feedback_success(self, tmp_path):
         from openjarvis.core.types import Trace
         from openjarvis.traces.store import TraceStore
@@ -150,6 +166,7 @@ class TestTraceStoreUpdateFeedback:
         assert updated.feedback == pytest.approx(0.9)
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_update_feedback_nonexistent(self, tmp_path):
         from openjarvis.traces.store import TraceStore
 
@@ -157,6 +174,7 @@ class TestTraceStoreUpdateFeedback:
         assert not store.update_feedback("nonexistent", 0.5)
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_update_feedback_overwrite(self, tmp_path):
         from openjarvis.core.types import Trace
         from openjarvis.traces.store import TraceStore

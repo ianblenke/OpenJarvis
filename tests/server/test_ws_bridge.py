@@ -35,6 +35,7 @@ def app(event_bus):
 
 
 class TestWSBridge:
+    @pytest.mark.spec("REQ-server.websocket")
     def test_websocket_receives_events(self, app, event_bus):
         client = TestClient(app)
         with client.websocket_connect("/v1/agents/events") as ws:
@@ -47,6 +48,7 @@ class TestWSBridge:
             assert data["type"] == "agent_tick_start"
             assert data["data"]["agent_id"] == "test-123"
 
+    @pytest.mark.spec("REQ-server.websocket")
     def test_websocket_filters_by_agent_id(self, app, event_bus):
         client = TestClient(app)
         with client.websocket_connect("/v1/agents/events?agent_id=agent-A") as ws:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.cli import cli
@@ -10,6 +11,7 @@ from openjarvis.cli import cli
 class TestEvalCLI:
     """Tests for the eval command group."""
 
+    @pytest.mark.spec("REQ-cli.bench")
     def test_eval_group_exists(self):
         """``jarvis eval --help`` shows run/compare/report/list subcommands."""
         result = CliRunner().invoke(cli, ["eval", "--help"])
@@ -19,6 +21,7 @@ class TestEvalCLI:
         assert "report" in result.output
         assert "list" in result.output
 
+    @pytest.mark.spec("REQ-cli.bench")
     def test_eval_list_benchmarks(self):
         """``jarvis eval list`` exits 0 and outputs benchmark names."""
         result = CliRunner().invoke(cli, ["eval", "list"])
@@ -31,6 +34,7 @@ class TestEvalCLI:
         assert "jarvis-direct" in result.output
         assert "jarvis-agent" in result.output
 
+    @pytest.mark.spec("REQ-cli.bench")
     def test_eval_run_missing_args(self):
         """``jarvis eval run`` without required args fails gracefully."""
         result = CliRunner().invoke(cli, ["eval", "run"])

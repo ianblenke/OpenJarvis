@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.core.registry import ModelRegistry
 from openjarvis.core.types import ModelSpec
 from openjarvis.learning._stubs import RoutingContext
@@ -37,26 +39,31 @@ def _register_models() -> None:
 
 
 class TestBuildRoutingContext:
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_code_detection(self) -> None:
         ctx = build_routing_context("def hello():\n    pass")
         assert ctx.has_code is True
         assert ctx.has_math is False
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_math_detection(self) -> None:
         ctx = build_routing_context("solve the integral of x^2")
         assert ctx.has_math is True
         assert ctx.has_code is False
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_length(self) -> None:
         ctx = build_routing_context("Hi")
         assert ctx.query_length == 2
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_urgency_default(self) -> None:
         ctx = build_routing_context("test")
         assert ctx.urgency == 0.5
 
 
 class TestHeuristicRouter:
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_short_query_prefers_small(self) -> None:
         _register_models()
         router = HeuristicRouter(
@@ -65,6 +72,7 @@ class TestHeuristicRouter:
         ctx = RoutingContext(query="Hi", query_length=2)
         assert router.select_model(ctx) == "small"
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_code_prefers_coder(self) -> None:
         _register_models()
         router = HeuristicRouter(
@@ -75,6 +83,7 @@ class TestHeuristicRouter:
         )
         assert router.select_model(ctx) == "coder"
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_math_prefers_large(self) -> None:
         _register_models()
         router = HeuristicRouter(
@@ -85,6 +94,7 @@ class TestHeuristicRouter:
         )
         assert router.select_model(ctx) == "large"
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_long_query_prefers_large(self) -> None:
         _register_models()
         router = HeuristicRouter(
@@ -93,6 +103,7 @@ class TestHeuristicRouter:
         ctx = RoutingContext(query="x" * 501, query_length=501)
         assert router.select_model(ctx) == "large"
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_high_urgency_overrides_to_small(self) -> None:
         _register_models()
         router = HeuristicRouter(
@@ -103,6 +114,7 @@ class TestHeuristicRouter:
         )
         assert router.select_model(ctx) == "small"
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_fallback_chain(self) -> None:
         _register_models()
         router = HeuristicRouter(
@@ -116,6 +128,7 @@ class TestHeuristicRouter:
         )
         assert router.select_model(ctx) == "large"
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_no_available_models(self) -> None:
         router = HeuristicRouter(
             available_models=[], default_model="fallback-model",
@@ -123,6 +136,7 @@ class TestHeuristicRouter:
         ctx = RoutingContext(query="test", query_length=4)
         assert router.select_model(ctx) == "fallback-model"
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_reasoning_keywords_prefer_large(self) -> None:
         _register_models()
         router = HeuristicRouter(available_models=["small", "large"])
@@ -133,6 +147,7 @@ class TestHeuristicRouter:
         ctx = build_routing_context(query)
         assert router.select_model(ctx) == "large"
 
+    @pytest.mark.spec("REQ-learning.heuristic-router")
     def test_code_without_coder_falls_to_large(self) -> None:
         _register_models()
         router = HeuristicRouter(

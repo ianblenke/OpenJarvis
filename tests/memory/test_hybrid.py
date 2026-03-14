@@ -5,6 +5,8 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, List, Optional
 
+import pytest
+
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.registry import MemoryRegistry
 from openjarvis.tools.storage._stubs import MemoryBackend, RetrievalResult
@@ -76,6 +78,7 @@ def _make_hybrid() -> HybridMemory:
 # -- RRF unit tests -------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_rrf_scoring_correctness():
     """Verify RRF formula: score = sum(w / (k + rank + 1))."""
     list1 = [
@@ -100,6 +103,7 @@ def test_rrf_scoring_correctness():
     assert fused[0].content == "B"
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_rrf_with_disjoint_results():
     """Two lists with no overlap."""
     list1 = [RetrievalResult(content="X", score=1.0)]
@@ -111,6 +115,7 @@ def test_rrf_with_disjoint_results():
     assert abs(fused[0].score - fused[1].score) < 1e-6
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_rrf_with_overlapping_results():
     """Document appearing in both lists gets higher fused score."""
     shared = RetrievalResult(content="shared", score=5.0)
@@ -122,6 +127,7 @@ def test_rrf_with_overlapping_results():
     assert scores["shared"] > scores["unique"]
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_rrf_custom_weights():
     """Weights affect the contribution of each list."""
     list1 = [RetrievalResult(content="A", score=1.0)]
@@ -137,11 +143,13 @@ def test_rrf_custom_weights():
 # -- HybridMemory integration tests ---------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_registration():
     MemoryRegistry.register_value("hybrid", HybridMemory)
     assert MemoryRegistry.contains("hybrid")
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_store_delegates_to_both():
     hybrid = _make_hybrid()
     doc_id = hybrid.store("test content", source="test.txt")
@@ -153,6 +161,7 @@ def test_store_delegates_to_both():
     assert len(dense_results) >= 1
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_retrieve_fuses_results():
     hybrid = _make_hybrid()
     hybrid.store("machine learning algorithms")
@@ -162,6 +171,7 @@ def test_retrieve_fuses_results():
     assert "machine" in results[0].content.lower()
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_retrieve_top_k():
     hybrid = _make_hybrid()
     for i in range(10):
@@ -170,6 +180,7 @@ def test_retrieve_top_k():
     assert len(results) <= 3
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_delete_from_both():
     hybrid = _make_hybrid()
     doc_id = hybrid.store("deletable content")
@@ -178,6 +189,7 @@ def test_delete_from_both():
     assert len(hybrid._sparse.retrieve("deletable")) == 0
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_clear_both():
     hybrid = _make_hybrid()
     hybrid.store("doc one about topics")
@@ -187,6 +199,7 @@ def test_clear_both():
     assert len(hybrid._dense.retrieve("topics")) == 0
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_event_bus_store():
     bus = EventBus(record_history=True)
     hybrid = _make_hybrid()
@@ -208,6 +221,20 @@ def test_event_bus_store():
         mod.get_event_bus = original
 
 
+@pytest.mark.spec("REQ-storage.hybrid")
+def test_delete_unknown_id_no_dense_mapping():
+    """Exercise partial branch: delete with doc_id not in _id_map.
+
+    When there is no mapping from sparse_id -> dense_id, the dense
+    delete is skipped (dense_id is None).
+    """
+    hybrid = _make_hybrid()
+    # Delete a non-existent ID that has no mapping in _id_map
+    result = hybrid.delete("nonexistent-id-xyz")
+    assert result is False  # both backends fail to delete
+
+
+@pytest.mark.spec("REQ-storage.hybrid")
 def test_event_bus_retrieve():
     bus = EventBus(record_history=True)
     hybrid = _make_hybrid()

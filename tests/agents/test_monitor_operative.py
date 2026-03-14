@@ -1,24 +1,18 @@
 """Tests for MonitorOperativeAgent."""
 
-from unittest.mock import MagicMock
+import pytest
 
 from openjarvis.agents.monitor_operative import MonitorOperativeAgent
 from openjarvis.core.registry import AgentRegistry
+from tests.fixtures.engines import FakeEngine
 
 
-def _make_engine(content: str = "Hello") -> MagicMock:
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.generate.return_value = {
-        "content": content,
-        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-        "model": "test-model",
-        "finish_reason": "stop",
-    }
-    return engine
+def _make_engine(content: str = "Hello") -> FakeEngine:
+    return FakeEngine(engine_id="mock", responses=[content])
 
 
 class TestMonitorOperativeAgent:
+    @pytest.mark.spec("REQ-agents.base.registration")
     def test_registration(self) -> None:
         # Import triggers registration; re-register after autouse fixture
         # clears the registry (same pattern as test_monitor.py)
@@ -29,12 +23,14 @@ class TestMonitorOperativeAgent:
         cls = AgentRegistry.get("monitor_operative")
         assert cls is MonitorOperativeAgent
 
+    @pytest.mark.spec("REQ-agents.monitor")
     def test_instantiation(self) -> None:
         engine = _make_engine()
         agent = MonitorOperativeAgent(engine, "test-model")
         assert agent.agent_id == "monitor_operative"
         assert agent.accepts_tools is True
 
+    @pytest.mark.spec("REQ-agents.monitor")
     def test_default_strategies(self) -> None:
         engine = _make_engine()
         agent = MonitorOperativeAgent(engine, "test-model")
@@ -43,6 +39,7 @@ class TestMonitorOperativeAgent:
         assert agent._retrieval_strategy == "hybrid_with_self_eval"
         assert agent._task_decomposition == "phased"
 
+    @pytest.mark.spec("REQ-agents.monitor")
     def test_custom_strategies(self) -> None:
         engine = _make_engine()
         agent = MonitorOperativeAgent(
@@ -55,6 +52,7 @@ class TestMonitorOperativeAgent:
         assert agent._memory_extraction == "scratchpad"
         assert agent._observation_compression == "none"
 
+    @pytest.mark.spec("REQ-agents.monitor")
     def test_simple_run(self) -> None:
         engine = _make_engine("The answer is 42.")
         agent = MonitorOperativeAgent(engine, "test-model")

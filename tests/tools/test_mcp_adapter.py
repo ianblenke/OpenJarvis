@@ -29,6 +29,7 @@ def client(server):
 
 
 class TestMCPToolAdapter:
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_adapter_spec(self, client):
         spec = ToolSpec(
             name="calculator",
@@ -42,6 +43,7 @@ class TestMCPToolAdapter:
         assert adapter.spec.name == "calculator"
         assert adapter.spec.description == "Evaluate a math expression"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_adapter_execute_success(self, client):
         spec = ToolSpec(
             name="calculator",
@@ -54,6 +56,7 @@ class TestMCPToolAdapter:
         assert "4" in result.content
         assert result.tool_name == "calculator"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_adapter_execute_think(self, client):
         spec = ToolSpec(
             name="think",
@@ -65,6 +68,7 @@ class TestMCPToolAdapter:
         assert result.success is True
         assert "analyze" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_adapter_execute_error(self, client):
         spec = ToolSpec(
             name="calculator",
@@ -76,6 +80,7 @@ class TestMCPToolAdapter:
         assert result.success is True
         assert result.content == "inf"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_adapter_unknown_tool(self, client):
         spec = ToolSpec(
             name="nonexistent",
@@ -87,6 +92,7 @@ class TestMCPToolAdapter:
         assert result.success is False
         assert "error" in result.content.lower() or "MCP" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_adapter_tool_id(self, client):
         spec = ToolSpec(name="calculator", description="Calc", parameters={})
         adapter = MCPToolAdapter(client, spec)
@@ -94,6 +100,7 @@ class TestMCPToolAdapter:
 
 
 class TestMCPToolProvider:
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_discover_returns_adapters(self, client):
         provider = MCPToolProvider(client)
         tools = provider.discover()
@@ -102,6 +109,7 @@ class TestMCPToolProvider:
         assert "calculator" in names
         assert "think" in names
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_discovered_tools_are_base_tool(self, client):
         from openjarvis.tools._stubs import BaseTool
 
@@ -110,6 +118,7 @@ class TestMCPToolProvider:
         for tool in tools:
             assert isinstance(tool, BaseTool)
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_discovered_tool_execution(self, client):
         provider = MCPToolProvider(client)
         tools = provider.discover()
@@ -122,6 +131,7 @@ class TestMCPToolProvider:
 class TestMCPAdapterRoundTrip:
     """End-to-end: Server → InProcessTransport → Client → Adapter → execute."""
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_full_round_trip(self):
         server = MCPServer([CalculatorTool(), ThinkTool()])
         transport = InProcessTransport(server)
@@ -135,6 +145,7 @@ class TestMCPAdapterRoundTrip:
         assert result.success is True
         assert "30" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_round_trip_error_handling(self):
         server = MCPServer([CalculatorTool()])
         transport = InProcessTransport(server)
@@ -148,6 +159,7 @@ class TestMCPAdapterRoundTrip:
         assert result.success is True
         assert result.content == "inf"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_empty_server_discover(self):
         server = MCPServer([])
         transport = InProcessTransport(server)

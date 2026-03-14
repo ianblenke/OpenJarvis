@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.optimize.store import OptimizationStore
 from openjarvis.optimize.types import (
     OptimizationRun,
@@ -70,6 +72,7 @@ def _sample_trial(
 class TestOptimizationStoreInit:
     """Tests for OptimizationStore initialization."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_creates_tables(self, tmp_path) -> None:
         db = tmp_path / "opt.db"
         store = OptimizationStore(db)
@@ -80,6 +83,7 @@ class TestOptimizationStoreInit:
         assert trials == []
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_creates_tables_string_path(self, tmp_path) -> None:
         db = str(tmp_path / "opt.db")
         store = OptimizationStore(db)
@@ -87,6 +91,7 @@ class TestOptimizationStoreInit:
         assert runs == []
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_wal_mode(self, tmp_path) -> None:
         db = tmp_path / "opt.db"
         store = OptimizationStore(db)
@@ -103,6 +108,7 @@ class TestOptimizationStoreInit:
 class TestTrialPersistence:
     """Tests for save_trial + get_trials roundtrip."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_save_and_get_trials(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         run_id = "run-001"
@@ -133,6 +139,7 @@ class TestTrialPersistence:
         assert t.config.reasoning == "testing"
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_multiple_trials(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         run_id = "run-002"
@@ -149,12 +156,14 @@ class TestTrialPersistence:
         assert [t.accuracy for t in trials] == [0.7, 0.85, 0.9]
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_get_trials_empty_run(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         trials = store.get_trials("nonexistent-run")
         assert trials == []
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_trial_with_empty_failure_modes(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         run_id = "run-003"
@@ -183,6 +192,7 @@ class TestTrialPersistence:
 class TestRunPersistence:
     """Tests for save_run + get_run roundtrip."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_save_and_get_run(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         space = _sample_search_space()
@@ -212,12 +222,14 @@ class TestRunPersistence:
         assert loaded.best_trial.accuracy == 0.95
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_get_run_not_found(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         result = store.get_run("nonexistent")
         assert result is None
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_save_run_without_best_trial(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         space = _sample_search_space()
@@ -234,6 +246,7 @@ class TestRunPersistence:
         assert loaded.status == "running"
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_search_space_roundtrip(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         space = _sample_search_space()
@@ -256,6 +269,7 @@ class TestRunPersistence:
         assert loaded.search_space.constraints == ["max_turns >= 1"]
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_run_with_trials_loaded(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         space = _sample_search_space()
@@ -281,12 +295,14 @@ class TestRunPersistence:
 class TestListRuns:
     """Tests for list_runs."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_list_runs_empty(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         runs = store.list_runs()
         assert runs == []
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_list_runs_returns_summaries(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         space = _sample_search_space()
@@ -312,6 +328,7 @@ class TestListRuns:
             assert "created_at" in r
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_list_runs_limit(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         space = _sample_search_space()
@@ -336,6 +353,7 @@ class TestListRuns:
 class TestClose:
     """Tests for close."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_close(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         store.close()
@@ -346,6 +364,7 @@ class TestClose:
         except Exception:
             pass
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_double_close(self, tmp_path) -> None:
         """Double close should not raise."""
         store = OptimizationStore(tmp_path / "opt.db")
@@ -362,6 +381,7 @@ class TestNewFieldsPersistence:
     """Tests for sample_scores, structured_feedback,
     and pareto_frontier_ids roundtrip."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_sample_scores_roundtrip(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         run_id = "run-scores"
@@ -397,6 +417,7 @@ class TestNewFieldsPersistence:
         assert loaded[0].sample_scores[1].error == "timeout"
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_structured_feedback_roundtrip(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         run_id = "run-feedback"
@@ -424,6 +445,7 @@ class TestNewFieldsPersistence:
         assert fb.target_primitive == "agent"
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_pareto_frontier_ids_roundtrip(self, tmp_path) -> None:
         store = OptimizationStore(tmp_path / "opt.db")
         space = _sample_search_space()
@@ -450,6 +472,7 @@ class TestNewFieldsPersistence:
         assert loaded.pareto_frontier[1].trial_id == "t2"
         store.close()
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_trial_without_new_fields_loads(self, tmp_path) -> None:
         """Trials saved without new fields should load without errors."""
         store = OptimizationStore(tmp_path / "opt.db")

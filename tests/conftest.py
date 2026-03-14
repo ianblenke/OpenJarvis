@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -201,32 +201,63 @@ def has_gemini_key() -> bool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def mock_engine():
-    """Factory for mock InferenceEngine instances."""
+class _FactoryEngine:
+    """Typed fake engine produced by the ``mock_engine`` fixture factory.
 
-    def _factory(
+    Replaces MagicMock with a concrete object that implements the
+    InferenceEngine protocol surface used by tests.
+    """
+
+    def __init__(
+        self,
         engine_id: str = "mock",
         model_response: str = "Hello!",
-        tool_calls: list | None = None,
-        models: list[str] | None = None,
-    ) -> MagicMock:
-        engine = MagicMock()
-        engine.engine_id = engine_id
-        engine.health.return_value = True
-        engine.list_models.return_value = models or ["test-model"]
-
-        result = {
+        tool_calls: Optional[list] = None,
+        models: Optional[List[str]] = None,
+    ) -> None:
+        self.engine_id = engine_id
+        self._models = models or ["test-model"]
+        self._result: Dict[str, Any] = {
             "content": model_response,
             "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
             "model": "test-model",
             "finish_reason": "stop",
         }
         if tool_calls:
-            result["tool_calls"] = tool_calls
-            result["finish_reason"] = "tool_calls"
-        engine.generate.return_value = result
-        return engine
+            self._result["tool_calls"] = tool_calls
+            self._result["finish_reason"] = "tool_calls"
+        # Call tracking (mirrors FakeEngine from fixtures/engines.py)
+        self.call_history: List[Dict[str, Any]] = []
+        self.call_count: int = 0
+
+    def health(self) -> bool:
+        return True
+
+    def list_models(self) -> List[str]:
+        return self._models
+
+    def generate(self, messages, **kwargs) -> Dict[str, Any]:
+        self.call_count += 1
+        self.call_history.append({"messages": messages, **kwargs})
+        return self._result
+
+
+@pytest.fixture
+def mock_engine():
+    """Factory for typed fake InferenceEngine instances (no MagicMock)."""
+
+    def _factory(
+        engine_id: str = "mock",
+        model_response: str = "Hello!",
+        tool_calls: Optional[list] = None,
+        models: Optional[List[str]] = None,
+    ) -> _FactoryEngine:
+        return _FactoryEngine(
+            engine_id=engine_id,
+            model_response=model_response,
+            tool_calls=tool_calls,
+            models=models,
+        )
 
     return _factory
 

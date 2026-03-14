@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 
 from openjarvis.core.types import Message, Role
 from openjarvis.engine._openai_compat import _OpenAICompatibleEngine
@@ -21,6 +22,7 @@ class _TestEngine(_OpenAICompatibleEngine):
 
 
 class TestOpenAICompatToolCalls:
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_no_tool_calls(self, respx_mock):
         """When no tool_calls in response, result has no tool_calls key."""
         respx_mock.post("http://localhost:9999/v1/chat/completions").mock(
@@ -44,6 +46,7 @@ class TestOpenAICompatToolCalls:
         assert "tool_calls" not in result
         assert result["content"] == "Hi"
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_with_tool_calls(self, respx_mock):
         """Extract tool_calls from OpenAI-format response."""
         respx_mock.post("http://localhost:9999/v1/chat/completions").mock(
@@ -83,6 +86,7 @@ class TestOpenAICompatToolCalls:
         assert tc["arguments"] == '{"expression":"2+2"}'
         assert result["content"] == ""  # None → ""
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_tools_kwarg_passthrough(self, respx_mock):
         """Tools kwarg is spread into the payload via **kwargs."""
         captured = {}
@@ -106,6 +110,7 @@ class TestOpenAICompatToolCalls:
         )
         assert "tools" in captured["body"]
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_multiple_tool_calls(self, respx_mock):
         respx_mock.post("http://localhost:9999/v1/chat/completions").mock(
             return_value=httpx.Response(200, json={
@@ -143,6 +148,7 @@ class TestOpenAICompatToolCalls:
 
 
 class TestOllamaToolCalls:
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_no_tool_calls(self, respx_mock):
         respx_mock.post("http://localhost:11434/api/chat").mock(
             return_value=httpx.Response(200, json={
@@ -159,6 +165,7 @@ class TestOllamaToolCalls:
         )
         assert "tool_calls" not in result
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_with_tool_calls(self, respx_mock):
         respx_mock.post("http://localhost:11434/api/chat").mock(
             return_value=httpx.Response(200, json={
@@ -184,6 +191,7 @@ class TestOllamaToolCalls:
         assert "tool_calls" in result
         assert result["tool_calls"][0]["name"] == "calculator"
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_tools_in_payload(self, respx_mock):
         captured = {}
 
@@ -203,6 +211,7 @@ class TestOllamaToolCalls:
         )
         assert "tools" in captured["body"]
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_dict_arguments_serialized_to_json(self, respx_mock):
         """Ollama returns arguments as dict — engine must serialize."""
         respx_mock.post(
@@ -235,6 +244,7 @@ class TestOllamaToolCalls:
             "expression": "3*3",
         }
 
+    @pytest.mark.spec("REQ-engine.ollama")
     def test_no_tools_no_tools_key(self, respx_mock):
         captured = {}
 

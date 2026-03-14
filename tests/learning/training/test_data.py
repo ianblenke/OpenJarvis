@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from typing import Any, List
 
+import pytest
+
 from openjarvis.core.types import StepType, Trace, TraceStep
 from openjarvis.learning.training.data import TrainingDataMiner
 
@@ -87,6 +89,7 @@ class FakeTraceStore:
 
 
 class TestExtractSFTPairs:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_extract_sft_pairs_from_successful_traces(self) -> None:
         """SFT pairs are extracted from high-quality traces."""
         traces = [
@@ -110,6 +113,7 @@ class TestExtractSFTPairs:
         assert p0["model"] == "qwen3:8b"
         assert p0["feedback"] == 0.9
 
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_deduplication(self) -> None:
         """Duplicate (input, output) pairs are collapsed to a single entry."""
         traces = [
@@ -122,6 +126,7 @@ class TestExtractSFTPairs:
 
         assert len(pairs) == 1
 
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_min_quality_filter(self) -> None:
         """Traces below min_quality are excluded from SFT pairs."""
         traces = [
@@ -138,6 +143,7 @@ class TestExtractSFTPairs:
 
 
 class TestExtractRoutingPairs:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_extract_routing_pairs(self) -> None:
         """Routing pairs group traces by query class and find best model."""
         traces = [
@@ -162,6 +168,7 @@ class TestExtractRoutingPairs:
 
 
 class TestExtractAgentConfigPairs:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_extract_agent_config_pairs(self) -> None:
         """Agent config pairs find best agent and tools per query class."""
         traces = [
@@ -195,6 +202,7 @@ class TestExtractAgentConfigPairs:
 
 
 class TestOutcomeFilter:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_failure_traces_excluded_despite_high_feedback(self) -> None:
         """Traces with outcome='failure' are excluded even if feedback is high."""
         traces = [
@@ -228,6 +236,7 @@ class TestOutcomeFilter:
 
 
 class TestEmptyStore:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_empty_store_returns_empty(self) -> None:
         """All extractors return empty results for an empty store."""
         store = FakeTraceStore([])

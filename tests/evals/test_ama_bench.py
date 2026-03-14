@@ -1,6 +1,6 @@
 """Tests for AMA-Bench dataset provider and scorer."""
 
-from unittest.mock import MagicMock
+import pytest
 
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.datasets.ama_bench import AMABenchDataset
@@ -9,14 +9,17 @@ from openjarvis.evals.scorers.ama_bench_judge import (
     _compute_token_f1,
     _parse_judge_label,
 )
+from tests.fixtures.engines import FakeInferenceBackend
 
 
 class TestAMABenchDataset:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_instantiation(self) -> None:
         ds = AMABenchDataset()
         assert ds.dataset_id == "ama-bench"
         assert ds.dataset_name == "AMA-Bench"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_has_required_methods(self) -> None:
         ds = AMABenchDataset()
         assert hasattr(ds, "load")
@@ -24,6 +27,7 @@ class TestAMABenchDataset:
         assert hasattr(ds, "size")
         assert hasattr(ds, "iter_episodes")
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_row_to_episode(self) -> None:
         ds = AMABenchDataset()
         row = {
@@ -64,6 +68,7 @@ class TestAMABenchDataset:
         assert "## Question" in records[0].problem
         assert records[0].reference == "type query"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_format_trajectory(self) -> None:
         trajectory = [
             {"turn_idx": 0, "action": "look around", "observation": "You see a room"},
@@ -76,6 +81,7 @@ class TestAMABenchDataset:
         assert "You see a room" in text
         assert "Turn 1" in text
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_truncate_trajectory_text(self) -> None:
         long_text = "A" * 1000
         truncated = AMABenchDataset._truncate_trajectory_text(long_text, 200)
@@ -84,11 +90,13 @@ class TestAMABenchDataset:
         assert truncated.startswith("A")
         assert truncated.endswith("A")
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_truncate_preserves_short_text(self) -> None:
         short_text = "Hello world"
         result = AMABenchDataset._truncate_trajectory_text(short_text, 1000)
         assert len(result) <= 1000
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_question_types_mapped(self) -> None:
         from openjarvis.evals.datasets.ama_bench import _QUESTION_TYPE_TO_SUBJECT
         assert _QUESTION_TYPE_TO_SUBJECT["A"] == "recall"
@@ -97,17 +105,17 @@ class TestAMABenchDataset:
         assert _QUESTION_TYPE_TO_SUBJECT["D"] == "state_abstraction"
 
 
-def _mock_backend() -> MagicMock:
-    backend = MagicMock()
-    backend.generate.return_value = "yes"
-    return backend
+def _mock_backend():
+    return FakeInferenceBackend(responses=["yes"])
 
 
 class TestAMABenchScorer:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_instantiation(self) -> None:
         s = AMABenchScorer(_mock_backend(), "test-model")
         assert s.scorer_id == "ama-bench"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_empty_response(self) -> None:
         s = AMABenchScorer(_mock_backend(), "test-model")
         record = EvalRecord(
@@ -119,6 +127,7 @@ class TestAMABenchScorer:
         assert meta["reason"] == "empty_response"
         assert meta["f1"] == 0.0
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_judge_yes(self) -> None:
         s = AMABenchScorer(_mock_backend(), "test-model")
         record = EvalRecord(
@@ -133,9 +142,9 @@ class TestAMABenchScorer:
         assert meta["match_type"] == "llm_judge"
         assert meta["f1"] > 0
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_judge_no(self) -> None:
-        backend = MagicMock()
-        backend.generate.return_value = "no"
+        backend = FakeInferenceBackend(responses=["no"])
         s = AMABenchScorer(backend, "test-model")
         record = EvalRecord(
             record_id="test-3",
@@ -147,9 +156,9 @@ class TestAMABenchScorer:
         is_correct, meta = s.score(record, "The sky is green")
         assert is_correct is False
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_judge_invalid_falls_back_to_f1(self) -> None:
-        backend = MagicMock()
-        backend.generate.return_value = "I cannot determine this"
+        backend = FakeInferenceBackend(responses=["I cannot determine this"])
         s = AMABenchScorer(backend, "test-model")
         record = EvalRecord(
             record_id="test-4",
@@ -165,64 +174,80 @@ class TestAMABenchScorer:
 
 
 class TestJudgeParsing:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_direct_yes(self) -> None:
         assert _parse_judge_label("yes") == "yes"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_direct_no(self) -> None:
         assert _parse_judge_label("no") == "no"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_with_period(self) -> None:
         assert _parse_judge_label("yes.") == "yes"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_with_thinking_tags(self) -> None:
         assert _parse_judge_label(
             "<think>Let me check...</think>yes"
         ) == "yes"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_with_thinking_tags_no(self) -> None:
         assert _parse_judge_label(
             "<think>The answer doesn't match</think>\nno"
         ) == "no"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_multiline(self) -> None:
         assert _parse_judge_label("  \n  yes\n") == "yes"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_garbage_returns_none(self) -> None:
         assert _parse_judge_label("maybe") is None
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_embedded_yes(self) -> None:
         assert _parse_judge_label("The answer is yes based on the reference") == "yes"
 
 
 class TestTokenF1:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_exact_match(self) -> None:
         assert _compute_token_f1("hello world", "hello world") == 1.0
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_no_overlap(self) -> None:
         assert _compute_token_f1("hello", "goodbye") == 0.0
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_partial_overlap(self) -> None:
         f1 = _compute_token_f1("the blue sky", "blue sky today")
         assert 0.0 < f1 < 1.0
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_empty_reference(self) -> None:
         assert _compute_token_f1("", "") == 1.0
         assert _compute_token_f1("hello", "") == 0.0
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_empty_prediction(self) -> None:
         assert _compute_token_f1("", "hello") == 0.0
 
 
 class TestAMABenchCLI:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_in_benchmarks_dict(self) -> None:
         from openjarvis.evals.cli import BENCHMARKS
         assert "ama-bench" in BENCHMARKS
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_build_dataset(self) -> None:
         from openjarvis.evals.cli import _build_dataset
         ds = _build_dataset("ama-bench")
         assert ds.dataset_id == "ama-bench"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_build_scorer(self) -> None:
         from openjarvis.evals.cli import _build_scorer
         s = _build_scorer("ama-bench", _mock_backend(), "test-model")

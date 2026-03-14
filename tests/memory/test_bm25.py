@@ -21,6 +21,7 @@ def _make_backend() -> BM25Memory:
 # -- registration -----------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_registration_in_memory_registry():
     """Importing the module registers 'bm25' in MemoryRegistry."""
     MemoryRegistry.register_value("bm25", BM25Memory)
@@ -30,6 +31,7 @@ def test_registration_in_memory_registry():
 # -- store ------------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_store_returns_id():
     backend = _make_backend()
     doc_id = backend.store("hello world")
@@ -40,6 +42,7 @@ def test_store_returns_id():
 # -- retrieve ---------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_store_and_retrieve():
     backend = _make_backend()
     backend.store(
@@ -52,6 +55,7 @@ def test_store_and_retrieve():
     assert "Python" in results[0].content
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_relevance_ordering():
     backend = _make_backend()
     backend.store("cooking recipes for dinner")
@@ -64,6 +68,7 @@ def test_relevance_ordering():
         assert "machine" in r.content.lower()
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_top_k():
     backend = _make_backend()
     for i in range(10):
@@ -72,12 +77,14 @@ def test_top_k():
     assert len(results) <= 3
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_empty_store_returns_no_results():
     backend = _make_backend()
     results = backend.retrieve("anything")
     assert results == []
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_retrieve_empty_query():
     backend = _make_backend()
     backend.store("some content")
@@ -88,6 +95,7 @@ def test_retrieve_empty_query():
 # -- delete -----------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_delete():
     backend = _make_backend()
     doc_id = backend.store("deletable content")
@@ -99,6 +107,7 @@ def test_delete():
     assert len(results) == 0
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_delete_nonexistent():
     backend = _make_backend()
     assert backend.delete("nonexistent_id") is False
@@ -107,6 +116,7 @@ def test_delete_nonexistent():
 # -- clear ------------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_clear():
     backend = _make_backend()
     backend.store("doc one")
@@ -121,6 +131,7 @@ def test_clear():
 # -- event bus integration --------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_event_bus_store():
     bus = EventBus(record_history=True)
     backend = _make_backend()
@@ -141,6 +152,7 @@ def test_event_bus_store():
         mod.get_event_bus = original
 
 
+@pytest.mark.spec("REQ-storage.bm25")
 def test_event_bus_retrieve():
     bus = EventBus(record_history=True)
     backend = _make_backend()

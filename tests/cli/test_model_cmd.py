@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import importlib
-from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.cli import cli
@@ -14,16 +14,29 @@ from openjarvis.core.config import JarvisConfig
 _model_mod = importlib.import_module("openjarvis.cli.model")
 
 
+class _FakeEngine:
+    """Typed fake engine for model CLI tests."""
+
+    def __init__(self) -> None:
+        self.engine_id = "mock"
+
+    def health(self) -> bool:
+        return True
+
+    def list_models(self):
+        return ["model-a", "model-b"]
+
+    def generate(self, messages, **kwargs):
+        return {"content": "ok", "usage": {}}
+
+
 def _mock_engine():
-    """Create a mock engine with list_models and health."""
-    engine = mock.MagicMock()
-    engine.engine_id = "mock"
-    engine.health.return_value = True
-    engine.list_models.return_value = ["model-a", "model-b"]
-    return engine
+    """Create a typed fake engine with list_models and health."""
+    return _FakeEngine()
 
 
 class TestModelList:
+    @pytest.mark.spec("REQ-cli.model")
     def test_list_from_mock_engine(self, monkeypatch) -> None:
         cfg = JarvisConfig()
         monkeypatch.setattr(_model_mod, "load_config", lambda: cfg)
@@ -40,6 +53,7 @@ class TestModelList:
         assert result.exit_code == 0
         assert "model-a" in result.output
 
+    @pytest.mark.spec("REQ-cli.model")
     def test_no_engines_message(self, monkeypatch) -> None:
         cfg = JarvisConfig()
         monkeypatch.setattr(_model_mod, "load_config", lambda: cfg)
@@ -52,6 +66,7 @@ class TestModelList:
 
 
 class TestModelInfo:
+    @pytest.mark.spec("REQ-cli.model")
     def test_info_known_model(self, monkeypatch) -> None:
         cfg = JarvisConfig()
         monkeypatch.setattr(_model_mod, "load_config", lambda: cfg)
@@ -67,6 +82,7 @@ class TestModelInfo:
         assert result.exit_code == 0
         assert "Qwen3 8B" in result.output
 
+    @pytest.mark.spec("REQ-cli.model")
     def test_unknown_model_not_found(self, monkeypatch) -> None:
         cfg = JarvisConfig()
         monkeypatch.setattr(_model_mod, "load_config", lambda: cfg)

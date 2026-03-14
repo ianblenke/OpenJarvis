@@ -4,73 +4,96 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from openjarvis.security.file_policy import filter_sensitive_paths, is_sensitive_file
 
 
 class TestIsSensitiveFile:
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_env(self) -> None:
         assert is_sensitive_file(".env") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_env_local(self) -> None:
         assert is_sensitive_file(".env.local") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_pem(self) -> None:
         assert is_sensitive_file("server.pem") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_key(self) -> None:
         assert is_sensitive_file("private.key") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_id_rsa(self) -> None:
         assert is_sensitive_file("id_rsa") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_credentials(self) -> None:
         assert is_sensitive_file("credentials.json") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_htpasswd(self) -> None:
         assert is_sensitive_file(".htpasswd") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_pgpass(self) -> None:
         assert is_sensitive_file(".pgpass") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_netrc(self) -> None:
         assert is_sensitive_file(".netrc") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_p12(self) -> None:
         assert is_sensitive_file("cert.p12") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_pfx(self) -> None:
         assert is_sensitive_file("cert.pfx") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_jks(self) -> None:
         assert is_sensitive_file("keystore.jks") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_id_ed25519(self) -> None:
         assert is_sensitive_file("id_ed25519") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_secret(self) -> None:
         assert is_sensitive_file(".secret") is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_sensitive_env_in_path(self) -> None:
         assert is_sensitive_file(Path("/some/dir/.env")) is True
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_not_sensitive_py(self) -> None:
         assert is_sensitive_file("main.py") is False
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_not_sensitive_txt(self) -> None:
         assert is_sensitive_file("readme.txt") is False
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_not_sensitive_toml(self) -> None:
         assert is_sensitive_file("pyproject.toml") is False
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_not_sensitive_json(self) -> None:
         assert is_sensitive_file("package.json") is False
 
+    @pytest.mark.spec("REQ-security.file-policy.sensitive")
     def test_path_object(self) -> None:
         assert is_sensitive_file(Path("server.pem")) is True
         assert is_sensitive_file(Path("main.py")) is False
 
 
 class TestFilterSensitivePaths:
+    @pytest.mark.spec("REQ-security.file-policy.filter")
     def test_filter_sensitive_paths(self) -> None:
         paths = [
             "main.py",
@@ -89,15 +112,18 @@ class TestFilterSensitivePaths:
         assert "server.pem" not in names
         assert "credentials.json" not in names
 
+    @pytest.mark.spec("REQ-security.file-policy.filter")
     def test_filter_all_sensitive(self) -> None:
         paths = [".env", "server.pem", "credentials.json"]
         filtered = filter_sensitive_paths(paths)
         assert filtered == []
 
+    @pytest.mark.spec("REQ-security.file-policy.filter")
     def test_filter_none_sensitive(self) -> None:
         paths = ["main.py", "app.js", "readme.txt"]
         filtered = filter_sensitive_paths(paths)
         assert len(filtered) == 3
 
+    @pytest.mark.spec("REQ-security.file-policy.filter")
     def test_filter_empty(self) -> None:
         assert filter_sensitive_paths([]) == []

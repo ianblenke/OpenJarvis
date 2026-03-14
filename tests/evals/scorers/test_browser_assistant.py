@@ -1,5 +1,7 @@
 """Tests for the browser_assistant scorer."""
 
+import pytest
+
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.scorers.browser_assistant import (
     BrowserAssistantScorer,
@@ -28,6 +30,7 @@ def _make_record(exact_facts=None, semantic_facts=None):
     )
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_exact_facts_found():
     record = _make_record(exact_facts=["128K tokens", "5432"])
     scorer = BrowserAssistantScorer()
@@ -43,6 +46,7 @@ def test_exact_facts_found():
     assert meta["sources_cited"] is True
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_partial_exact_match():
     record = _make_record(exact_facts=["128K tokens", "H200"])
     scorer = BrowserAssistantScorer()
@@ -53,6 +57,7 @@ def test_partial_exact_match():
     assert meta["exact_score"] == 0.5
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_semantic_facts_heuristic():
     record = _make_record(
         semantic_facts=[
@@ -72,6 +77,7 @@ def test_semantic_facts_heuristic():
     assert meta["sources_cited"] is True
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_sources_with_url():
     record = _make_record(exact_facts=["5432"])
     scorer = BrowserAssistantScorer()
@@ -83,6 +89,7 @@ def test_sources_with_url():
     assert meta["sources_cited"] is True
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_empty_answer():
     record = _make_record(exact_facts=["something"])
     scorer = BrowserAssistantScorer()
@@ -91,6 +98,7 @@ def test_empty_answer():
     assert meta["reason"] == "empty_response"
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_no_facts():
     record = EvalRecord(
         record_id="test-ba-2",

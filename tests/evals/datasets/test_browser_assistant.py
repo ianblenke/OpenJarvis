@@ -1,22 +1,27 @@
 """Tests for the browser_assistant dataset."""
 
+import pytest
+
 from openjarvis.evals.datasets.browser_assistant import (
     BrowserAssistantDataset,
 )
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_dataset_loads():
     ds = BrowserAssistantDataset()
     ds.load(max_samples=5, seed=42)
     assert ds.size() == 5
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_dataset_full_size():
     ds = BrowserAssistantDataset()
     ds.load()
     assert ds.size() == 30
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_record_structure():
     ds = BrowserAssistantDataset()
     ds.load(max_samples=1, seed=42)
@@ -28,6 +33,7 @@ def test_record_structure():
     assert isinstance(record.metadata["expected_facts"], list)
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_fact_types():
     ds = BrowserAssistantDataset()
     ds.load(max_samples=1, seed=0)
@@ -38,6 +44,7 @@ def test_fact_types():
     assert fact["type"] in ("exact", "semantic")
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_exact_semantic_split():
     ds = BrowserAssistantDataset()
     ds.load()
@@ -52,6 +59,7 @@ def test_exact_semantic_split():
     assert has_semantic
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_difficulty_tiers():
     ds = BrowserAssistantDataset()
     ds.load()

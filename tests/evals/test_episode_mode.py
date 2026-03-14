@@ -1,10 +1,13 @@
 """Tests for EvalRunner episode mode."""
 
+import pytest
+
 from openjarvis.evals.core.dataset import DatasetProvider
 from openjarvis.evals.core.types import EvalRecord
 
 
 class TestDatasetProviderEpisodes:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_default_iter_episodes(self) -> None:
         """Default iter_episodes wraps each record in its own episode."""
 
@@ -35,6 +38,7 @@ class TestDatasetProviderEpisodes:
 
 
 class TestRunConfigEpisodeMode:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_episode_mode_field(self) -> None:
         from openjarvis.evals.core.types import RunConfig
         cfg = RunConfig(
@@ -43,6 +47,7 @@ class TestRunConfigEpisodeMode:
         )
         assert cfg.episode_mode is True
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_episode_mode_default_false(self) -> None:
         from openjarvis.evals.core.types import RunConfig
         cfg = RunConfig(benchmark="test", backend="test", model="test")

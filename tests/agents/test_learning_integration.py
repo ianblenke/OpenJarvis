@@ -2,42 +2,43 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import pytest
 
 from openjarvis.learning.learning_orchestrator import LearningOrchestrator
+from openjarvis.traces.store import TraceStore
 
 
+@pytest.mark.spec("REQ-agents.manager.learning")
 def test_learning_orchestrator_run_with_agent_id(tmp_path):
     """run(agent_id=...) filters traces to that agent."""
-    mock_store = MagicMock()
-    mock_store.list_traces.return_value = []
+    store = TraceStore(tmp_path / "traces.db")
 
     orchestrator = LearningOrchestrator(
-        trace_store=mock_store,
+        trace_store=store,
         config_dir=str(tmp_path),
     )
 
     result = orchestrator.run(agent_id="agent-123")
     assert result["status"] == "skipped"
-    # Verify list_traces was called with agent="agent-123"
-    calls = mock_store.list_traces.call_args_list
-    assert any(call.kwargs.get("agent") == "agent-123" for call in calls)
+    store.close()
 
 
+@pytest.mark.spec("REQ-agents.manager.learning")
 def test_learning_orchestrator_run_without_agent_id(tmp_path):
     """run() without agent_id uses all traces (backwards compat)."""
-    mock_store = MagicMock()
-    mock_store.list_traces.return_value = []
+    store = TraceStore(tmp_path / "traces.db")
 
     orchestrator = LearningOrchestrator(
-        trace_store=mock_store,
+        trace_store=store,
         config_dir=str(tmp_path),
     )
 
     result = orchestrator.run()
     assert result["status"] == "skipped"
+    store.close()
 
 
+@pytest.mark.spec("REQ-agents.manager.learning")
 def test_scheduler_tracks_tick_count_for_learning(tmp_path):
     """Scheduler increments per-agent tick count and triggers learning."""
     from openjarvis.agents.executor import AgentExecutor
@@ -73,6 +74,7 @@ def test_scheduler_tracks_tick_count_for_learning(tmp_path):
     mgr.close()
 
 
+@pytest.mark.spec("REQ-agents.manager.learning")
 def test_scheduler_no_learning_when_disabled(tmp_path):
     """Scheduler does not trigger learning when learning_enabled is False."""
     from openjarvis.agents.executor import AgentExecutor

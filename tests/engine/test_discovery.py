@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest import mock
+import pytest
 
 from openjarvis.core.config import JarvisConfig
 from openjarvis.core.registry import EngineRegistry
@@ -47,36 +47,39 @@ def _reg(key: str, eid: str) -> None:
 
 
 class TestDiscoverEngines:
-    def test_only_healthy_returned(self) -> None:
+    @pytest.mark.spec("REQ-engine.discovery.probe")
+    def test_only_healthy_returned(self, monkeypatch) -> None:
         _reg("healthy", "healthy")
         _reg("sick", "sick")
 
         cfg = JarvisConfig()
-        with mock.patch(
-            "openjarvis.engine._discovery._make_engine",
-            side_effect=lambda k, c: _FakeEngine(
-                healthy=(k == "healthy")
-            ),
-        ):
-            result = discover_engines(cfg)
+        import openjarvis.engine._discovery as _disc_mod
+        monkeypatch.setattr(
+            _disc_mod, "_make_engine",
+            lambda k, c: _FakeEngine(healthy=(k == "healthy")),
+        )
+        result = discover_engines(cfg)
         assert len(result) == 1
         assert result[0][0] == "healthy"
 
-    def test_default_engine_first(self) -> None:
+    @pytest.mark.spec("REQ-engine.discovery.probe")
+    def test_default_engine_first(self, monkeypatch) -> None:
         _reg("a", "a")
         _reg("b", "b")
 
         cfg = JarvisConfig()
         cfg.engine.default = "b"
-        with mock.patch(
-            "openjarvis.engine._discovery._make_engine",
-            side_effect=lambda k, c: _FakeEngine(healthy=True),
-        ):
-            result = discover_engines(cfg)
+        import openjarvis.engine._discovery as _disc_mod
+        monkeypatch.setattr(
+            _disc_mod, "_make_engine",
+            lambda k, c: _FakeEngine(healthy=True),
+        )
+        result = discover_engines(cfg)
         assert result[0][0] == "b"
 
 
 class TestDiscoverModels:
+    @pytest.mark.spec("REQ-engine.discovery.models")
     def test_aggregate_models(self) -> None:
         e1 = _FakeEngine(models=["m1", "m2"])
         e2 = _FakeEngine(models=["m3"])
@@ -85,7 +88,8 @@ class TestDiscoverModels:
 
 
 class TestGetEngine:
-    def test_fallback_when_default_unhealthy(self) -> None:
+    @pytest.mark.spec("REQ-engine.discovery.get-engine")
+    def test_fallback_when_default_unhealthy(self, monkeypatch) -> None:
         _reg("bad", "bad")
         _reg("good", "good")
 
@@ -95,10 +99,8 @@ class TestGetEngine:
         def _make(k, c):  # noqa: ANN001
             return _FakeEngine(healthy=(k == "good"))
 
-        with mock.patch(
-            "openjarvis.engine._discovery._make_engine",
-            side_effect=_make,
-        ):
-            result = get_engine(cfg)
+        import openjarvis.engine._discovery as _disc_mod
+        monkeypatch.setattr(_disc_mod, "_make_engine", _make)
+        result = get_engine(cfg)
         assert result is not None
         assert result[0] == "good"

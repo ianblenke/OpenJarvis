@@ -1,15 +1,16 @@
 """Tests for the git tools (status, diff, commit, log).
 
-Tests mock the Rust backend (``get_rust_module``) so that the compiled
-``openjarvis_rust`` extension is not required.  The mock simulates Rust
-behaviour: git commands run via ``subprocess`` with the same flags that the
-Rust ``git_tools.rs`` implementation uses.
+Uses a real typed fake for the Rust backend that delegates to real git
+subprocess calls -- no MagicMock / unittest.mock.  Each test that needs
+a repository creates one in tmp_path via _init_repo().
 """
 
 from __future__ import annotations
 
 import subprocess
-from unittest.mock import MagicMock, patch
+import types
+
+import pytest
 
 from openjarvis.tools.git_tool import (
     GitCommitTool,
@@ -19,7 +20,7 @@ from openjarvis.tools.git_tool import (
 )
 
 # ---------------------------------------------------------------------------
-# Helpers — mock Rust backend
+# Helpers -- typed fake Rust module using real git subprocess calls
 # ---------------------------------------------------------------------------
 
 
@@ -41,57 +42,51 @@ def _run_git_like_rust(args: list[str], cwd: str | None = None) -> str:
     return result.stdout
 
 
-def _make_mock_rust(tmp_path=None):
-    """Return a mock module mimicking ``openjarvis_rust`` git tools.
+class _FakeGitStatusTool:
+    """Typed fake mirroring the Rust GitStatusTool."""
 
-    The mock's ``GitStatusTool``, ``GitDiffTool``, and ``GitLogTool``
-    classes each have an ``execute`` method that shells out to git using
-    the same flags as the Rust implementation.
-    """
-    mock_mod = MagicMock()
-
-    # -- GitStatusTool --
-    status_inst = MagicMock()
-
-    def _status_execute(cwd=None):
+    def execute(self, cwd: str = ".") -> str:
         return _run_git_like_rust(["status", "--short"], cwd=cwd)
 
-    status_inst.execute.side_effect = _status_execute
-    mock_mod.GitStatusTool.return_value = status_inst
 
-    # -- GitDiffTool --
-    diff_inst = MagicMock()
+class _FakeGitDiffTool:
+    """Typed fake mirroring the Rust GitDiffTool."""
 
-    def _diff_execute(cwd=None):
+    def execute(self, cwd: str = ".") -> str:
         return _run_git_like_rust(["diff"], cwd=cwd)
 
-    diff_inst.execute.side_effect = _diff_execute
-    mock_mod.GitDiffTool.return_value = diff_inst
 
-    # -- GitLogTool --
-    log_inst = MagicMock()
+class _FakeGitLogTool:
+    """Typed fake mirroring the Rust GitLogTool."""
 
-    def _log_execute(cwd=None, count=None):
-        # Rust reads params["n"], but PyO3 passes "count".  The Rust side
-        # never sees "count" so the limit always defaults to 10.
-        n = 10
-        return _run_git_like_rust(["log", "--oneline", f"-{n}"], cwd=cwd)
-
-    log_inst.execute.side_effect = _log_execute
-    mock_mod.GitLogTool.return_value = log_inst
-
-    return mock_mod
+    def execute(self, cwd: str = ".", count: int = 10) -> str:
+        # Rust reads param "n" but PyO3 passes "count"; Rust always defaults
+        # to 10 since the key doesn't match.
+        return _run_git_like_rust(["log", "--oneline", f"-{10}"], cwd=cwd)
 
 
-def _make_mock_rust_git_not_found():
-    """Return a mock module whose git tools raise RuntimeError (git missing)."""
-    mock_mod = MagicMock()
+def _make_fake_rust_module() -> types.ModuleType:
+    """Build a real typed-fake module mimicking ``openjarvis_rust`` git tools."""
+    mod = types.ModuleType("fake_openjarvis_rust")
+    mod.GitStatusTool = _FakeGitStatusTool  # type: ignore[attr-defined]
+    mod.GitDiffTool = _FakeGitDiffTool  # type: ignore[attr-defined]
+    mod.GitLogTool = _FakeGitLogTool  # type: ignore[attr-defined]
+    return mod
+
+
+def _make_fake_rust_git_not_found() -> types.ModuleType:
+    """Build a fake module whose git tools raise RuntimeError (git missing)."""
     err = RuntimeError("Failed to run git: No such file or directory (os error 2)")
-    for attr in ("GitStatusTool", "GitDiffTool", "GitLogTool"):
-        inst = MagicMock()
-        inst.execute.side_effect = err
-        getattr(mock_mod, attr).return_value = inst
-    return mock_mod
+
+    class _FailingTool:
+        def execute(self, *args, **kwargs):
+            raise err
+
+    mod = types.ModuleType("fake_openjarvis_rust_nogit")
+    mod.GitStatusTool = _FailingTool  # type: ignore[attr-defined]
+    mod.GitDiffTool = _FailingTool  # type: ignore[attr-defined]
+    mod.GitLogTool = _FailingTool  # type: ignore[attr-defined]
+    return mod
 
 
 def _init_repo(path):
@@ -114,7 +109,6 @@ def _init_repo(path):
         capture_output=True,
         check=True,
     )
-    # Create an initial commit so HEAD exists
     readme = path / "README.md"
     readme.write_text("# Test Repo\n")
     subprocess.run(
@@ -137,78 +131,106 @@ def _init_repo(path):
 
 
 class TestGitStatusTool:
-    def test_spec(self):
+    @pytest.mark.spec("REQ-tools.git.status.spec")
+    @pytest.mark.spec("REQ-tools.git")
+    def test_spec_name(self):
         tool = GitStatusTool()
         assert tool.spec.name == "git_status"
+
+    @pytest.mark.spec("REQ-tools.git.status.spec")
+    def test_spec_category(self):
+        tool = GitStatusTool()
         assert tool.spec.category == "vcs"
+
+    @pytest.mark.spec("REQ-tools.git.status.spec")
+    def test_spec_required_capabilities(self):
+        tool = GitStatusTool()
         assert "file:read" in tool.spec.required_capabilities
 
+    @pytest.mark.spec("REQ-tools.git.status.spec")
     def test_tool_id(self):
         tool = GitStatusTool()
         assert tool.tool_id == "git_status"
 
-    def test_clean_repo(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.status.execute")
+    def test_clean_repo(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         tool = GitStatusTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path))
         assert result.success is True
-        # Clean repo — Rust uses --short so no output
+        # Clean repo -- short format produces no output
         assert result.content == "(no output)"
 
-    def test_modified_file(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.status.execute")
+    def test_modified_file(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         (tmp_path / "README.md").write_text("# Modified\n")
         tool = GitStatusTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path))
         assert result.success is True
         assert "README.md" in result.content
 
-    def test_untracked_file(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.status.execute")
+    def test_untracked_file(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         (tmp_path / "new_file.txt").write_text("hello")
         tool = GitStatusTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path))
         assert result.success is True
         assert "new_file.txt" in result.content
 
-    def test_default_repo_path(self):
+    @pytest.mark.spec("REQ-tools.git.status.execute")
+    def test_invalid_repo_path(self, tmp_path, monkeypatch):
         tool = GitStatusTool()
-        mock_mod = _make_mock_rust()
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute()
-        # Should succeed or fail depending on cwd; not a crash
-        assert isinstance(result.content, str)
-
-    def test_invalid_repo_path(self, tmp_path):
-        tool = GitStatusTool()
-        mock_mod = _make_mock_rust()
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path / "nonexistent"))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path / "nonexistent"))
         assert result.success is False
 
-    def test_returncode_in_metadata(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.status.execute")
+    def test_returncode_in_metadata(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         tool = GitStatusTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path))
         assert "returncode" in result.metadata
         assert result.metadata["returncode"] == 0
 
-    def test_git_not_found(self):
+    @pytest.mark.spec("REQ-tools.git.status.execute")
+    def test_git_not_found(self, monkeypatch):
         tool = GitStatusTool()
-        mock_mod = _make_mock_rust_git_not_found()
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=".")
+        mock_mod = _make_fake_rust_git_not_found()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=".")
         assert result.success is False
         assert "Failed to run git" in result.content
 
+    @pytest.mark.spec("REQ-tools.git.status.openai")
     def test_to_openai_function(self):
         tool = GitStatusTool()
         fn = tool.to_openai_function()
@@ -222,36 +244,55 @@ class TestGitStatusTool:
 
 
 class TestGitDiffTool:
-    def test_spec(self):
+    @pytest.mark.spec("REQ-tools.git.diff.spec")
+    def test_spec_name(self):
         tool = GitDiffTool()
         assert tool.spec.name == "git_diff"
+
+    @pytest.mark.spec("REQ-tools.git.diff.spec")
+    def test_spec_category(self):
+        tool = GitDiffTool()
         assert tool.spec.category == "vcs"
+
+    @pytest.mark.spec("REQ-tools.git.diff.spec")
+    def test_spec_required_capabilities(self):
+        tool = GitDiffTool()
         assert "file:read" in tool.spec.required_capabilities
 
+    @pytest.mark.spec("REQ-tools.git.diff.spec")
     def test_tool_id(self):
         tool = GitDiffTool()
         assert tool.tool_id == "git_diff"
 
-    def test_no_changes(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.diff.execute")
+    def test_no_changes(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         tool = GitDiffTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path))
         assert result.success is True
         assert result.content == "(no output)"
 
-    def test_unstaged_changes(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.diff.execute")
+    def test_unstaged_changes(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         (tmp_path / "README.md").write_text("# Changed\n")
         tool = GitDiffTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path))
         assert result.success is True
         assert "Changed" in result.content
 
-    def test_staged_changes(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.diff.execute")
+    def test_staged_changes_falls_back_to_cli(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         (tmp_path / "README.md").write_text("# Staged\n")
         subprocess.run(
@@ -261,55 +302,66 @@ class TestGitDiffTool:
             check=True,
         )
         tool = GitDiffTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            # Unstaged should be empty (Rust path)
-            result_unstaged = tool.execute(repo_path=str(tmp_path))
-            assert result_unstaged.content == "(no output)"
-            # Staged falls back to Python _run_git (not handled by Rust)
-            result_staged = tool.execute(repo_path=str(tmp_path), staged=True)
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        # Unstaged should be empty (Rust path)
+        result_unstaged = tool.execute(repo_path=str(tmp_path))
+        assert result_unstaged.content == "(no output)"
+        # Staged falls back to Python _run_git
+        result_staged = tool.execute(repo_path=str(tmp_path), staged=True)
         assert result_staged.success is True
         assert "Staged" in result_staged.content
 
-    def test_specific_file_path(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.diff.execute")
+    def test_specific_file_path(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         (tmp_path / "README.md").write_text("# Changed\n")
-        (tmp_path / "other.txt").write_text("other change")
-        subprocess.run(
-            ["git", "add", "other.txt"],
-            cwd=str(tmp_path),
-            capture_output=True,
-        )
         tool = GitDiffTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        # path= specified → falls back to Python _run_git, but
-        # get_rust_module() is still called before the branch.
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path), path="README.md")
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path), path="README.md")
         assert result.success is True
         assert "Changed" in result.content
 
-    def test_git_not_found(self):
+    @pytest.mark.spec("REQ-tools.git.diff.execute")
+    def test_git_not_found(self, monkeypatch):
         tool = GitDiffTool()
-        mock_mod = _make_mock_rust_git_not_found()
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=".")
+        mock_mod = _make_fake_rust_git_not_found()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=".")
         assert result.success is False
         assert "Failed to run git" in result.content
 
-    def test_invalid_repo_path(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.diff.execute")
+    def test_invalid_repo_path(self, tmp_path, monkeypatch):
         tool = GitDiffTool()
-        mock_mod = _make_mock_rust()
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path / "nonexistent"))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path / "nonexistent"))
         assert result.success is False
 
-    def test_returncode_in_metadata(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.diff.execute")
+    def test_returncode_in_metadata(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         tool = GitDiffTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path))
         assert result.metadata["returncode"] == 0
 
 
@@ -319,29 +371,51 @@ class TestGitDiffTool:
 
 
 class TestGitCommitTool:
-    def test_spec(self):
+    @pytest.mark.spec("REQ-tools.git.commit.spec")
+    def test_spec_name(self):
         tool = GitCommitTool()
         assert tool.spec.name == "git_commit"
+
+    @pytest.mark.spec("REQ-tools.git.commit.spec")
+    def test_spec_category(self):
+        tool = GitCommitTool()
         assert tool.spec.category == "vcs"
+
+    @pytest.mark.spec("REQ-tools.git.commit.spec")
+    def test_spec_required_capabilities(self):
+        tool = GitCommitTool()
         assert "file:write" in tool.spec.required_capabilities
+
+    @pytest.mark.spec("REQ-tools.git.commit.spec")
+    def test_spec_requires_confirmation(self):
+        tool = GitCommitTool()
         assert tool.spec.requires_confirmation is True
 
+    @pytest.mark.spec("REQ-tools.git.commit.spec")
     def test_tool_id(self):
         tool = GitCommitTool()
         assert tool.tool_id == "git_commit"
 
+    @pytest.mark.spec("REQ-tools.git.commit.spec")
+    def test_message_required_in_spec(self):
+        tool = GitCommitTool()
+        assert "message" in tool.spec.parameters["required"]
+
+    @pytest.mark.spec("REQ-tools.git.commit.execute")
     def test_no_message(self):
         tool = GitCommitTool()
         result = tool.execute(message="")
         assert result.success is False
         assert "No commit message" in result.content
 
+    @pytest.mark.spec("REQ-tools.git.commit.execute")
     def test_no_message_param(self):
         tool = GitCommitTool()
         result = tool.execute()
         assert result.success is False
         assert "No commit message" in result.content
 
+    @pytest.mark.spec("REQ-tools.git.commit.execute")
     def test_commit_staged_files(self, tmp_path):
         _init_repo(tmp_path)
         (tmp_path / "new.txt").write_text("hello")
@@ -359,6 +433,7 @@ class TestGitCommitTool:
         assert result.success is True
         assert result.metadata["returncode"] == 0
 
+    @pytest.mark.spec("REQ-tools.git.commit.execute")
     def test_stage_and_commit(self, tmp_path):
         _init_repo(tmp_path)
         (tmp_path / "a.txt").write_text("aaa")
@@ -379,6 +454,7 @@ class TestGitCommitTool:
         )
         assert "Add a and b" in log_output.stdout
 
+    @pytest.mark.spec("REQ-tools.git.commit.execute")
     def test_stage_all_files(self, tmp_path):
         _init_repo(tmp_path)
         (tmp_path / "x.txt").write_text("xxx")
@@ -390,6 +466,7 @@ class TestGitCommitTool:
         )
         assert result.success is True
 
+    @pytest.mark.spec("REQ-tools.git.commit.execute")
     def test_commit_nothing_staged(self, tmp_path):
         _init_repo(tmp_path)
         tool = GitCommitTool()
@@ -400,6 +477,7 @@ class TestGitCommitTool:
         # git commit with nothing staged fails
         assert result.success is False
 
+    @pytest.mark.spec("REQ-tools.git.commit.execute")
     def test_stage_nonexistent_file(self, tmp_path):
         _init_repo(tmp_path)
         tool = GitCommitTool()
@@ -411,6 +489,7 @@ class TestGitCommitTool:
         assert result.success is False
         assert "git add failed" in result.content
 
+    @pytest.mark.spec("REQ-tools.git.commit.execute")
     def test_empty_files_string(self, tmp_path):
         _init_repo(tmp_path)
         tool = GitCommitTool()
@@ -422,16 +501,17 @@ class TestGitCommitTool:
         assert result.success is False
         assert "Empty files list" in result.content
 
-    def test_git_not_found(self):
+    @pytest.mark.spec("REQ-tools.git.commit.execute")
+    def test_git_not_found(self, monkeypatch):
+
         tool = GitCommitTool()
-        with patch("openjarvis.tools.git_tool.shutil.which", return_value=None):
-            result = tool.execute(message="test")
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.shutil.which",
+            lambda _name: None,
+        )
+        result = tool.execute(message="test")
         assert result.success is False
         assert "not found" in result.content
-
-    def test_message_required_in_spec(self):
-        tool = GitCommitTool()
-        assert "message" in tool.spec.parameters["required"]
 
 
 # ---------------------------------------------------------------------------
@@ -440,42 +520,66 @@ class TestGitCommitTool:
 
 
 class TestGitLogTool:
-    def test_spec(self):
+    @pytest.mark.spec("REQ-tools.git.log.spec")
+    def test_spec_name(self):
         tool = GitLogTool()
         assert tool.spec.name == "git_log"
+
+    @pytest.mark.spec("REQ-tools.git.log.spec")
+    def test_spec_category(self):
+        tool = GitLogTool()
         assert tool.spec.category == "vcs"
+
+    @pytest.mark.spec("REQ-tools.git.log.spec")
+    def test_spec_required_capabilities(self):
+        tool = GitLogTool()
         assert "file:read" in tool.spec.required_capabilities
 
+    @pytest.mark.spec("REQ-tools.git.log.spec")
     def test_tool_id(self):
         tool = GitLogTool()
         assert tool.tool_id == "git_log"
 
-    def test_log_oneline(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.log.spec")
+    def test_default_count_is_10_in_description(self):
+        tool = GitLogTool()
+        desc = tool.spec.parameters["properties"]["count"]["description"]
+        assert "10" in desc
+
+    @pytest.mark.spec("REQ-tools.git.log.execute")
+    def test_log_oneline(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         tool = GitLogTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path))
         assert result.success is True
         assert "Initial commit" in result.content
 
-    def test_log_full_format(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.log.execute")
+    def test_log_full_format_still_oneline_from_rust(self, tmp_path, monkeypatch):
         """Rust git_log always uses --oneline; the ``oneline`` param is ignored."""
         _init_repo(tmp_path)
         tool = GitLogTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path), oneline=False)
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path), oneline=False)
         assert result.success is True
         assert "Initial commit" in result.content
         # Rust always uses --oneline, so "Author:" is never present
         assert "Author:" not in result.content
 
-    def test_log_count(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.log.execute")
+    def test_log_count(self, tmp_path, monkeypatch):
         """Rust reads param ``n`` but PyO3 passes ``count``, so the limit
         is always the default (10).  With 6 total commits all 6 are returned."""
         _init_repo(tmp_path)
-        # Add more commits
         for i in range(5):
             (tmp_path / f"file{i}.txt").write_text(f"content {i}")
             subprocess.run(
@@ -491,52 +595,103 @@ class TestGitLogTool:
                 check=True,
             )
         tool = GitLogTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path), count=3, oneline=True)
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path), count=3, oneline=True)
         assert result.success is True
-        # Rust ignores the count param (reads "n", gets "count") and
-        # defaults to 10, so all 6 commits are returned.
+        # Rust ignores the count param and defaults to 10, so all 6 returned
         lines = [
             line for line in result.content.strip().splitlines()
             if line.strip()
         ]
         assert len(lines) == 6
 
-    def test_default_count_is_10(self):
+    @pytest.mark.spec("REQ-tools.git.log.execute")
+    def test_git_not_found(self, monkeypatch):
         tool = GitLogTool()
-        # Verify via spec that default is documented
-        desc = tool.spec.parameters["properties"]["count"]["description"]
-        assert "10" in desc
-
-    def test_git_not_found(self):
-        tool = GitLogTool()
-        mock_mod = _make_mock_rust_git_not_found()
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            # Rust raises → Python fallback via _run_git, which also
-            # checks shutil.which
-            with patch("openjarvis.tools.git_tool.shutil.which", return_value=None):
-                result = tool.execute(repo_path=".")
+        mock_mod = _make_fake_rust_git_not_found()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        # Rust raises -> Python fallback via _run_git, which also checks shutil.which
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.shutil.which",
+            lambda _name: None,
+        )
+        result = tool.execute(repo_path=".")
         assert result.success is False
         assert "not found" in result.content
 
-    def test_invalid_repo_path(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.log.execute")
+    def test_invalid_repo_path(self, tmp_path, monkeypatch):
         tool = GitLogTool()
-        mock_mod = _make_mock_rust()
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path / "nonexistent"))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path / "nonexistent"))
         assert result.success is False
 
-    def test_returncode_in_metadata(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.git.log.execute")
+    def test_returncode_in_metadata(self, tmp_path, monkeypatch):
         _init_repo(tmp_path)
         tool = GitLogTool()
-        mock_mod = _make_mock_rust(tmp_path)
-        with patch("openjarvis.tools.git_tool.get_rust_module", return_value=mock_mod):
-            result = tool.execute(repo_path=str(tmp_path))
+        mock_mod = _make_fake_rust_module()
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.get_rust_module",
+            lambda: mock_mod,
+        )
+        result = tool.execute(repo_path=str(tmp_path))
         assert result.metadata["returncode"] == 0
 
+    @pytest.mark.spec("REQ-tools.git.log.openai")
     def test_to_openai_function(self):
         tool = GitLogTool()
         fn = tool.to_openai_function()
         assert fn["type"] == "function"
         assert fn["function"]["name"] == "git_log"
+
+
+# ---------------------------------------------------------------------------
+# Coverage: _truncate and subprocess.TimeoutExpired (lines 24, 79-80)
+# ---------------------------------------------------------------------------
+
+
+class TestGitToolCoverageExtras:
+    @pytest.mark.spec("REQ-tools.git.truncate")
+    def test_truncate_large_output(self):
+        """Exercise _truncate when output exceeds _MAX_OUTPUT_BYTES (line 24)."""
+        from openjarvis.tools.git_tool import _MAX_OUTPUT_BYTES, _truncate
+
+        big_text = "x" * (_MAX_OUTPUT_BYTES + 1000)
+        result = _truncate(big_text)
+        assert len(result.encode("utf-8")) <= _MAX_OUTPUT_BYTES + 200
+        assert "output truncated" in result
+
+    @pytest.mark.spec("REQ-tools.git.truncate")
+    def test_truncate_small_output_unchanged(self):
+        """_truncate returns small text unchanged."""
+        from openjarvis.tools.git_tool import _truncate
+
+        small = "hello world"
+        assert _truncate(small) == small
+
+    @pytest.mark.spec("REQ-tools.git.timeout")
+    def test_run_git_timeout(self, monkeypatch):
+        """Exercise subprocess.TimeoutExpired handler (lines 79-80)."""
+        from openjarvis.tools.git_tool import _run_git
+
+        def _fake_run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd=["git", "status"], timeout=30)
+
+        monkeypatch.setattr(
+            "openjarvis.tools.git_tool.subprocess.run", _fake_run,
+        )
+        result = _run_git(["git", "status"])
+        assert result.success is False
+        assert "timed out" in result.content.lower()

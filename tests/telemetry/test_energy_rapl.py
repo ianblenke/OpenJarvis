@@ -1,9 +1,10 @@
-"""Tests for RaplEnergyMonitor -- mock sysfs (no real RAPL required)."""
+"""Tests for RaplEnergyMonitor -- monkeypatch sysfs (no real RAPL required)."""
 
 from __future__ import annotations
 
+import importlib
+import platform
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -12,8 +13,7 @@ from openjarvis.telemetry.energy_rapl import (
     _discover_domains,
 )
 
-_PLAT = "openjarvis.telemetry.energy_rapl.platform.system"
-_BASE = "openjarvis.telemetry.energy_rapl._RAPL_BASE"
+_rapl_mod = importlib.import_module("openjarvis.telemetry.energy_rapl")
 
 
 # ---------------------------------------------------------------------------
@@ -66,16 +66,16 @@ def _build_fake_sysfs(tmp_path: Path) -> Path:
 
 
 class TestAvailable:
-    def test_available_false_on_non_linux(self):
-        with patch(_PLAT, return_value="Darwin"):
-            assert RaplEnergyMonitor.available() is False
+    @pytest.mark.spec("REQ-telemetry.energy.rapl")
+    def test_available_false_on_non_linux(self, monkeypatch):
+        monkeypatch.setattr(platform, "system", lambda: "Darwin")
+        assert RaplEnergyMonitor.available() is False
 
-    def test_available_false_when_no_sysfs(self):
-        with (
-            patch(_PLAT, return_value="Linux"),
-            patch(_BASE, Path("/nonexistent")),
-        ):
-            assert RaplEnergyMonitor.available() is False
+    @pytest.mark.spec("REQ-telemetry.energy.rapl")
+    def test_available_false_when_no_sysfs(self, monkeypatch):
+        monkeypatch.setattr(platform, "system", lambda: "Linux")
+        monkeypatch.setattr(_rapl_mod, "_RAPL_BASE", Path("/nonexistent"))
+        assert RaplEnergyMonitor.available() is False
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +84,7 @@ class TestAvailable:
 
 
 class TestEnergyMethod:
+    @pytest.mark.spec("REQ-telemetry.energy.rapl")
     def test_returns_rapl(self):
         monitor = RaplEnergyMonitor.__new__(RaplEnergyMonitor)
         assert monitor.energy_method() == "rapl"
@@ -95,6 +96,7 @@ class TestEnergyMethod:
 
 
 class TestDomainDiscovery:
+    @pytest.mark.spec("REQ-telemetry.energy.rapl")
     def test_discovers_domains_from_sysfs(self, tmp_path):
         rapl_base = _build_fake_sysfs(tmp_path)
         domains = _discover_domains(rapl_base)
@@ -104,12 +106,14 @@ class TestDomainDiscovery:
         assert "package-0" in names
         assert "dram" in names
 
+    @pytest.mark.spec("REQ-telemetry.energy.rapl")
     def test_discovers_no_domains_from_empty_dir(self, tmp_path):
         rapl_base = tmp_path / "intel-rapl"
         rapl_base.mkdir()
         domains = _discover_domains(rapl_base)
         assert len(domains) == 0
 
+    @pytest.mark.spec("REQ-telemetry.energy.rapl")
     def test_discovers_no_domains_from_nonexistent_dir(self):
         domains = _discover_domains(Path("/nonexistent/intel-rapl"))
         assert len(domains) == 0
@@ -121,16 +125,17 @@ class TestDomainDiscovery:
 
 
 class TestSampleNormalDelta:
-    def test_normal_counter_delta(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.energy.rapl")
+    def test_normal_counter_delta(self, monkeypatch, tmp_path):
         """Start reading, then update energy files, verify delta."""
         rapl_base = _build_fake_sysfs(tmp_path)
 
-        with patch(_PLAT, return_value="Linux"):
-            monitor = RaplEnergyMonitor(
-                poll_interval_ms=50, rapl_base=rapl_base,
-            )
-            assert monitor._initialized is True
-            assert len(monitor._domains) == 2
+        monkeypatch.setattr(platform, "system", lambda: "Linux")
+        monitor = RaplEnergyMonitor(
+            poll_interval_ms=50, rapl_base=rapl_base,
+        )
+        assert monitor._initialized is True
+        assert len(monitor._domains) == 2
 
         # Set start values
         pkg_energy = rapl_base / "intel-rapl:0" / "energy_uj"
@@ -162,7 +167,8 @@ class TestSampleNormalDelta:
 
 
 class TestSampleWrapAround:
-    def test_counter_wrap_around(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.energy.rapl")
+    def test_counter_wrap_around(self, monkeypatch, tmp_path):
         """When end < start, uses max_energy_range_uj."""
         rapl_base = tmp_path / "intel-rapl"
         rapl_base.mkdir()
@@ -173,11 +179,11 @@ class TestSampleWrapAround:
             energy_uj=900000, max_energy_uj=max_energy,
         )
 
-        with patch(_PLAT, return_value="Linux"):
-            monitor = RaplEnergyMonitor(
-                poll_interval_ms=50, rapl_base=rapl_base,
-            )
-            assert monitor._initialized is True
+        monkeypatch.setattr(platform, "system", lambda: "Linux")
+        monitor = RaplEnergyMonitor(
+            poll_interval_ms=50, rapl_base=rapl_base,
+        )
+        assert monitor._initialized is True
 
         pkg_energy = rapl_base / "intel-rapl:0" / "energy_uj"
         pkg_energy.write_text("900000")
@@ -200,13 +206,14 @@ class TestSampleWrapAround:
 
 
 class TestSampleDomainCategorization:
-    def test_package_domains_categorized_as_cpu(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.energy.rapl")
+    def test_package_domains_categorized_as_cpu(self, monkeypatch, tmp_path):
         rapl_base = _build_fake_sysfs(tmp_path)
 
-        with patch(_PLAT, return_value="Linux"):
-            monitor = RaplEnergyMonitor(
-                poll_interval_ms=50, rapl_base=rapl_base,
-            )
+        monkeypatch.setattr(platform, "system", lambda: "Linux")
+        monitor = RaplEnergyMonitor(
+            poll_interval_ms=50, rapl_base=rapl_base,
+        )
 
         # Set start values
         pkg_energy = rapl_base / "intel-rapl:0" / "energy_uj"
@@ -232,15 +239,16 @@ class TestSampleDomainCategorization:
 
 
 class TestClose:
-    def test_close_clears_domains(self, tmp_path):
+    @pytest.mark.spec("REQ-telemetry.energy.rapl")
+    def test_close_clears_domains(self, monkeypatch, tmp_path):
         rapl_base = _build_fake_sysfs(tmp_path)
 
-        with patch(_PLAT, return_value="Linux"):
-            monitor = RaplEnergyMonitor(
-                poll_interval_ms=50, rapl_base=rapl_base,
-            )
-            assert len(monitor._domains) == 2
-            assert monitor._initialized is True
+        monkeypatch.setattr(platform, "system", lambda: "Linux")
+        monitor = RaplEnergyMonitor(
+            poll_interval_ms=50, rapl_base=rapl_base,
+        )
+        assert len(monitor._domains) == 2
+        assert monitor._initialized is True
 
         monitor.close()
 

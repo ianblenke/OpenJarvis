@@ -8,6 +8,7 @@ from openjarvis.evals.core.trace import QueryTrace, TurnTrace
 
 
 class TestTurnTrace:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_defaults(self):
         t = TurnTrace(turn_index=0)
         assert t.input_tokens == 0
@@ -16,6 +17,7 @@ class TestTurnTrace:
         assert t.gpu_energy_joules is None
         assert t.cost_usd is None
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_to_dict_roundtrip(self):
         t = TurnTrace(
             turn_index=1,
@@ -38,6 +40,7 @@ class TestTurnTrace:
         assert t2.gpu_energy_joules == pytest.approx(10.0)
         assert t2.cost_usd == pytest.approx(0.001)
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_from_dict_missing_keys(self):
         d = {"turn_index": 0}
         t = TurnTrace.from_dict(d)
@@ -77,20 +80,24 @@ class TestQueryTrace:
         defaults.update(kwargs)
         return QueryTrace(**defaults)
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_num_turns(self):
         t = self._make_trace()
         assert t.num_turns == 2
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_total_tokens(self):
         t = self._make_trace()
         assert t.total_input_tokens == 250
         assert t.total_output_tokens == 125
         assert t.total_tokens == 375
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_total_gpu_energy(self):
         t = self._make_trace()
         assert t.total_gpu_energy_joules == pytest.approx(12.5)
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_total_gpu_energy_fallback(self):
         t = self._make_trace(
             turns=[TurnTrace(turn_index=0)],
@@ -98,27 +105,33 @@ class TestQueryTrace:
         )
         assert t.total_gpu_energy_joules == pytest.approx(20.0)
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_total_cost(self):
         t = self._make_trace()
         assert t.total_cost_usd == pytest.approx(0.025)
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_total_cost_none(self):
         t = self._make_trace(turns=[TurnTrace(turn_index=0)])
         assert t.total_cost_usd is None
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_throughput(self):
         t = self._make_trace()
         assert t.throughput_tokens_per_sec == pytest.approx(125 / 2.5)
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_energy_per_token(self):
         t = self._make_trace()
         assert t.energy_per_token_joules == pytest.approx(12.5 / 125)
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_avg_gpu_power(self):
         t = self._make_trace()
         # No per-turn power set, so falls back to query-level
         assert t.avg_gpu_power_watts is None
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_to_dict_roundtrip(self):
         t = self._make_trace(is_resolved=True)
         d = t.to_dict()
@@ -130,6 +143,7 @@ class TestQueryTrace:
         assert t2.is_resolved is True
         assert t2.total_input_tokens == 250
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_save_load_jsonl(self, tmp_path):
         t1 = self._make_trace(query_id="q0001")
         t2 = self._make_trace(query_id="q0002")
@@ -141,6 +155,7 @@ class TestQueryTrace:
         assert loaded[0].query_id == "q0001"
         assert loaded[1].query_id == "q0002"
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_tool_call_count(self):
         t = self._make_trace(
             turns=[

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.core.types import ToolResult
 from openjarvis.tools._stubs import (
     BaseTool,
@@ -101,27 +103,33 @@ class _NoCategoryTool(BaseTool):
 
 
 class TestBuildToolDescriptions:
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_empty_list_returns_no_tools(self):
         assert build_tool_descriptions([]) == "No tools available."
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_single_tool_name_present(self):
         result = build_tool_descriptions([_CalcTool()])
         assert "### calculator" in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_description_present(self):
         result = build_tool_descriptions([_CalcTool()])
         assert "Evaluate a mathematical expression safely." in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_parameter_type_and_required(self):
         result = build_tool_descriptions([_CalcTool()])
         assert "expression" in result
         assert "string" in result
         assert "required" in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_parameter_description(self):
         result = build_tool_descriptions([_CalcTool()])
         assert "Math expression to evaluate" in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_optional_parameter_no_required_marker(self):
         result = build_tool_descriptions([_WebSearchTool()])
         # max_results is optional
@@ -131,37 +139,45 @@ class TestBuildToolDescriptions:
             if "max_results" in line:
                 assert "required" not in line
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_category_shown_by_default(self):
         result = build_tool_descriptions([_CalcTool()])
         assert "Category: math" in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_category_hidden_when_disabled(self):
         result = build_tool_descriptions([_CalcTool()], include_category=False)
         assert "Category:" not in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_empty_category_not_shown(self):
         result = build_tool_descriptions([_NoCategoryTool()])
         assert "Category:" not in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_cost_hidden_by_default(self):
         result = build_tool_descriptions([_WebSearchTool()])
         assert "Cost estimate:" not in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_cost_shown_when_enabled(self):
         result = build_tool_descriptions([_WebSearchTool()], include_cost=True)
         assert "Cost estimate:" in result
         assert "Latency estimate:" in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_zero_cost_not_shown(self):
         result = build_tool_descriptions([_CalcTool()], include_cost=True)
         # cost_estimate is 0.0, so should not show
         assert "Cost estimate:" not in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_multiple_tools(self):
         result = build_tool_descriptions([_CalcTool(), _WebSearchTool()])
         assert "### calculator" in result
         assert "### web_search" in result
 
+    @pytest.mark.spec("REQ-tools.descriptions")
     def test_tool_without_parameters(self):
         """Tool with empty parameters dict."""
 

@@ -22,6 +22,7 @@ from openjarvis.server.models import (  # noqa: E402
 
 
 class TestChatCompletionRequest:
+    @pytest.mark.spec("REQ-server.routes.models")
     def test_minimal(self):
         req = ChatCompletionRequest(
             model="test-model",
@@ -32,6 +33,7 @@ class TestChatCompletionRequest:
         assert req.temperature == 0.7
         assert req.stream is False
 
+    @pytest.mark.spec("REQ-server.routes.models")
     def test_with_options(self):
         req = ChatCompletionRequest(
             model="test",
@@ -46,6 +48,7 @@ class TestChatCompletionRequest:
 
 
 class TestChatCompletionResponse:
+    @pytest.mark.spec("REQ-server.routes.models")
     def test_defaults(self):
         resp = ChatCompletionResponse(
             model="test",
@@ -56,6 +59,7 @@ class TestChatCompletionResponse:
         assert resp.created > 0
         assert len(resp.choices) == 1
 
+    @pytest.mark.spec("REQ-server.routes.models")
     def test_usage(self):
         resp = ChatCompletionResponse(
             model="test",
@@ -66,6 +70,7 @@ class TestChatCompletionResponse:
 
 
 class TestChatCompletionChunk:
+    @pytest.mark.spec("REQ-server.routes.models")
     def test_defaults(self):
         chunk = ChatCompletionChunk(
             id="test-id",
@@ -77,11 +82,13 @@ class TestChatCompletionChunk:
 
 
 class TestModelListResponse:
+    @pytest.mark.spec("REQ-server.routes.models")
     def test_empty(self):
         resp = ModelListResponse()
         assert resp.object == "list"
         assert resp.data == []
 
+    @pytest.mark.spec("REQ-server.routes.models")
     def test_with_models(self):
         resp = ModelListResponse(data=[
             ModelObject(id="model-a"),
@@ -93,10 +100,12 @@ class TestModelListResponse:
 
 
 class TestChatMessage:
+    @pytest.mark.spec("REQ-server.routes.models")
     def test_user_message(self):
         msg = ChatMessage(role="user", content="Hello")
         assert msg.role == "user"
 
+    @pytest.mark.spec("REQ-server.routes.models")
     def test_with_tool_call_id(self):
         msg = ChatMessage(role="tool", content="result", tool_call_id="abc")
         assert msg.tool_call_id == "abc"

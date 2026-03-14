@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import pytest
 
 from openjarvis.agents.native_react import NativeReActAgent
 from openjarvis.core.registry import AgentRegistry
+from tests.fixtures.engines import FakeEngine
 
 
 class TestReActBackwardCompat:
+    @pytest.mark.spec("REQ-agents.react")
     def test_old_import_path(self):
         """Old import ``from openjarvis.agents.react import ReActAgent`` works."""
         from openjarvis.agents.react import ReActAgent
@@ -16,6 +18,7 @@ class TestReActBackwardCompat:
         # ReActAgent is actually NativeReActAgent
         assert ReActAgent is NativeReActAgent
 
+    @pytest.mark.spec("REQ-agents.base.registration")
     def test_registry_alias(self):
         """``AgentRegistry.get("react")`` returns NativeReActAgent."""
         # Ensure registration
@@ -27,15 +30,16 @@ class TestReActBackwardCompat:
         native_cls = AgentRegistry.get("native_react")
         assert react_cls is native_cls
 
+    @pytest.mark.spec("REQ-agents.react")
     def test_old_class_instantiates(self):
         """ReActAgent (alias) can be instantiated and has correct agent_id."""
         from openjarvis.agents.react import ReActAgent
 
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = FakeEngine(engine_id="mock")
         agent = ReActAgent(engine, "test-model")
         assert agent.agent_id == "native_react"
 
+    @pytest.mark.spec("REQ-agents.react")
     def test_react_system_prompt_importable(self):
         """REACT_SYSTEM_PROMPT can be imported from old path."""
         from openjarvis.agents.react import REACT_SYSTEM_PROMPT

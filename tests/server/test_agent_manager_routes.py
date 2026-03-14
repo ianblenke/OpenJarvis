@@ -43,11 +43,13 @@ class TestAgentManagerRoutes:
         app.include_router(global_router)
         return TestClient(app)
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_list_agents_empty(self, client):
         resp = client.get("/v1/managed-agents")
         assert resp.status_code == 200
         assert resp.json()["agents"] == []
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_create_agent(self, client):
         resp = client.post("/v1/managed-agents", json={
             "name": "researcher",
@@ -58,6 +60,7 @@ class TestAgentManagerRoutes:
         assert data["name"] == "researcher"
         assert data["status"] == "idle"
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_get_agent(self, client):
         create_resp = client.post("/v1/managed-agents", json={"name": "test"})
         agent_id = create_resp.json()["id"]
@@ -65,10 +68,12 @@ class TestAgentManagerRoutes:
         assert resp.status_code == 200
         assert resp.json()["id"] == agent_id
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_get_agent_not_found(self, client):
         resp = client.get("/v1/managed-agents/nonexistent")
         assert resp.status_code == 404
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_update_agent(self, client):
         create_resp = client.post("/v1/managed-agents", json={"name": "old"})
         agent_id = create_resp.json()["id"]
@@ -76,12 +81,14 @@ class TestAgentManagerRoutes:
         assert resp.status_code == 200
         assert resp.json()["name"] == "new"
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_delete_agent(self, client):
         create_resp = client.post("/v1/managed-agents", json={"name": "doomed"})
         agent_id = create_resp.json()["id"]
         resp = client.delete(f"/v1/managed-agents/{agent_id}")
         assert resp.status_code == 200
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_pause_resume(self, client):
         create_resp = client.post("/v1/managed-agents", json={"name": "pausable"})
         agent_id = create_resp.json()["id"]
@@ -92,6 +99,7 @@ class TestAgentManagerRoutes:
         resp = client.get(f"/v1/managed-agents/{agent_id}")
         assert resp.json()["status"] == "idle"
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_create_task(self, client):
         create_resp = client.post("/v1/managed-agents", json={"name": "worker"})
         agent_id = create_resp.json()["id"]
@@ -101,6 +109,7 @@ class TestAgentManagerRoutes:
         assert resp.status_code == 200
         assert resp.json()["description"] == "Find papers on reasoning"
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_list_tasks(self, client):
         create_resp = client.post("/v1/managed-agents", json={"name": "worker"})
         agent_id = create_resp.json()["id"]
@@ -109,6 +118,7 @@ class TestAgentManagerRoutes:
         resp = client.get(f"/v1/managed-agents/{agent_id}/tasks")
         assert len(resp.json()["tasks"]) == 2
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_channel_binding_crud(self, client):
         create_resp = client.post("/v1/managed-agents", json={"name": "slacker"})
         agent_id = create_resp.json()["id"]
@@ -127,12 +137,14 @@ class TestAgentManagerRoutes:
         unbind_resp = client.delete(url)
         assert unbind_resp.status_code == 200
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_templates(self, client):
         resp = client.get("/v1/templates")
         assert resp.status_code == 200
         templates = resp.json()["templates"]
         assert any(t["id"] == "research_monitor" for t in templates)
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_recover_agent(self, manager, client):
         # Create agent, save checkpoint, set error status
         agent = manager.create_agent(name="err", agent_type="simple")
@@ -143,11 +155,13 @@ class TestAgentManagerRoutes:
         assert res.status_code == 200
         assert res.json()["tick_id"] == "tick-1"
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_recover_agent_no_checkpoint(self, manager, client):
         agent = manager.create_agent(name="err", agent_type="simple")
         res = client.post(f"/v1/managed-agents/{agent['id']}/recover")
         assert res.status_code == 404
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_list_error_agents(self, manager, client):
         manager.create_agent(name="ok", agent_type="simple")
         err = manager.create_agent(name="broken", agent_type="simple")
@@ -159,6 +173,7 @@ class TestAgentManagerRoutes:
         assert len(agents) == 1
         assert agents[0]["name"] == "broken"
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_send_and_list_messages(self, manager, client):
         agent = manager.create_agent(name="chat", agent_type="simple")
 
@@ -172,6 +187,7 @@ class TestAgentManagerRoutes:
         assert res.status_code == 200
         assert len(res.json()["messages"]) == 1
 
+    @pytest.mark.spec("REQ-server.routes.agents")
     def test_get_agent_state(self, manager, client):
         agent = manager.create_agent(name="stateful", agent_type="simple")
         res = client.get(f"/v1/managed-agents/{agent['id']}/state")

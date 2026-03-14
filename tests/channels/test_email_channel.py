@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import os
-from unittest.mock import MagicMock, patch
+from email.message import EmailMessage
 
 import pytest
 
@@ -11,6 +10,34 @@ from openjarvis.channels._stubs import ChannelStatus
 from openjarvis.channels.email_channel import EmailChannel
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.registry import ChannelRegistry
+
+# ---------------------------------------------------------------------------
+# Typed fake for smtplib.SMTP
+# ---------------------------------------------------------------------------
+
+
+class _FakeSMTP:
+    """Typed fake for smtplib.SMTP used by the EmailChannel."""
+
+    def __init__(self) -> None:
+        self.starttls_calls = 0
+        self.login_calls: list[tuple[str, str]] = []
+        self.send_message_calls: list[EmailMessage] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def starttls(self) -> None:
+        self.starttls_calls += 1
+
+    def login(self, user: str, password: str) -> None:
+        self.login_calls.append((user, password))
+
+    def send_message(self, msg: EmailMessage) -> None:
+        self.send_message_calls.append(msg)
 
 
 @pytest.fixture(autouse=True)
@@ -21,6 +48,7 @@ def _register_email():
 
 
 class TestRegistration:
+    @pytest.mark.spec("REQ-channels.email")
     def test_registry_key(self):
         assert ChannelRegistry.contains("email")
 
@@ -32,6 +60,7 @@ class TestRegistration:
 
 
 class TestInit:
+    @pytest.mark.spec("REQ-channels.email")
     def test_defaults(self):
         ch = EmailChannel()
         assert ch._smtp_host == ""
@@ -43,6 +72,7 @@ class TestInit:
         assert ch._use_tls is True
         assert ch._status == ChannelStatus.DISCONNECTED
 
+    @pytest.mark.spec("REQ-channels.email")
     def test_constructor_params(self):
         ch = EmailChannel(
             smtp_host="smtp.example.com",
@@ -61,41 +91,48 @@ class TestInit:
         assert ch._password == "pass123"
         assert ch._use_tls is False
 
-    def test_env_var_fallback(self):
-        with patch.dict(os.environ, {
-            "EMAIL_USERNAME": "env@example.com",
-            "EMAIL_PASSWORD": "env-pass",
-        }):
-            ch = EmailChannel()
-            assert ch._username == "env@example.com"
-            assert ch._password == "env-pass"
+    @pytest.mark.spec("REQ-channels.email")
+    def test_env_var_fallback(self, monkeypatch):
+        monkeypatch.setenv("EMAIL_USERNAME", "env@example.com")
+        monkeypatch.setenv("EMAIL_PASSWORD", "env-pass")
+        ch = EmailChannel()
+        assert ch._username == "env@example.com"
+        assert ch._password == "env-pass"
 
-    def test_constructor_overrides_env(self):
-        with patch.dict(os.environ, {"EMAIL_USERNAME": "env@example.com"}):
-            ch = EmailChannel(username="explicit@example.com")
-            assert ch._username == "explicit@example.com"
+    @pytest.mark.spec("REQ-channels.email")
+    def test_constructor_overrides_env(self, monkeypatch):
+        monkeypatch.setenv("EMAIL_USERNAME", "env@example.com")
+        ch = EmailChannel(username="explicit@example.com")
+        assert ch._username == "explicit@example.com"
 
 
 class TestSend:
-    def test_send_success_tls(self):
+    @pytest.mark.spec("REQ-channels.email")
+    def test_send_success_tls(self, monkeypatch):
         ch = EmailChannel(
             smtp_host="smtp.example.com",
             username="user@example.com",
             password="pass123",
         )
 
-        mock_smtp = MagicMock()
-        with patch("smtplib.SMTP", return_value=mock_smtp) as mock_cls:
-            mock_smtp.__enter__ = MagicMock(return_value=mock_smtp)
-            mock_smtp.__exit__ = MagicMock(return_value=False)
-            result = ch.send("recipient@example.com", "Hello!")
-            assert result is True
-            mock_cls.assert_called_once_with("smtp.example.com", 587)
-            mock_smtp.starttls.assert_called_once()
-            mock_smtp.login.assert_called_once_with("user@example.com", "pass123")
-            mock_smtp.send_message.assert_called_once()
+        fake_smtp = _FakeSMTP()
+        smtp_cls_calls: list[tuple] = []
 
-    def test_send_success_no_tls(self):
+        def _fake_smtp_cls(host, port):
+            smtp_cls_calls.append((host, port))
+            return fake_smtp
+
+        monkeypatch.setattr("smtplib.SMTP", _fake_smtp_cls)
+
+        result = ch.send("recipient@example.com", "Hello!")
+        assert result is True
+        assert smtp_cls_calls == [("smtp.example.com", 587)]
+        assert fake_smtp.starttls_calls == 1
+        assert fake_smtp.login_calls == [("user@example.com", "pass123")]
+        assert len(fake_smtp.send_message_calls) == 1
+
+    @pytest.mark.spec("REQ-channels.email")
+    def test_send_success_no_tls(self, monkeypatch):
         ch = EmailChannel(
             smtp_host="smtp.example.com",
             username="user@example.com",
@@ -103,31 +140,37 @@ class TestSend:
             use_tls=False,
         )
 
-        mock_smtp = MagicMock()
-        with patch("smtplib.SMTP", return_value=mock_smtp):
-            mock_smtp.__enter__ = MagicMock(return_value=mock_smtp)
-            mock_smtp.__exit__ = MagicMock(return_value=False)
-            result = ch.send("recipient@example.com", "Hello!")
-            assert result is True
-            mock_smtp.starttls.assert_not_called()
+        fake_smtp = _FakeSMTP()
+        monkeypatch.setattr("smtplib.SMTP", lambda h, p: fake_smtp)
 
+        result = ch.send("recipient@example.com", "Hello!")
+        assert result is True
+        assert fake_smtp.starttls_calls == 0
+
+    @pytest.mark.spec("REQ-channels.email")
     def test_send_no_config(self):
         ch = EmailChannel()
         result = ch.send("recipient@example.com", "Hello!")
         assert result is False
 
-    def test_send_exception(self):
+    @pytest.mark.spec("REQ-channels.email")
+    def test_send_exception(self, monkeypatch):
         ch = EmailChannel(
             smtp_host="smtp.example.com",
             username="user@example.com",
             password="pass123",
         )
 
-        with patch("smtplib.SMTP", side_effect=ConnectionError("refused")):
-            result = ch.send("recipient@example.com", "Hello!")
-            assert result is False
+        def _raise(*a, **kw):
+            raise ConnectionError("refused")
 
-    def test_send_publishes_event(self):
+        monkeypatch.setattr("smtplib.SMTP", _raise)
+
+        result = ch.send("recipient@example.com", "Hello!")
+        assert result is False
+
+    @pytest.mark.spec("REQ-channels.email")
+    def test_send_publishes_event(self, monkeypatch):
         bus = EventBus(record_history=True)
         ch = EmailChannel(
             smtp_host="smtp.example.com",
@@ -136,47 +179,49 @@ class TestSend:
             bus=bus,
         )
 
-        mock_smtp = MagicMock()
-        with patch("smtplib.SMTP", return_value=mock_smtp):
-            mock_smtp.__enter__ = MagicMock(return_value=mock_smtp)
-            mock_smtp.__exit__ = MagicMock(return_value=False)
-            ch.send("recipient@example.com", "Hello!")
+        fake_smtp = _FakeSMTP()
+        monkeypatch.setattr("smtplib.SMTP", lambda h, p: fake_smtp)
+
+        ch.send("recipient@example.com", "Hello!")
 
         event_types = [e.event_type for e in bus.history]
         assert EventType.CHANNEL_MESSAGE_SENT in event_types
 
-    def test_send_with_subject_metadata(self):
+    @pytest.mark.spec("REQ-channels.email")
+    def test_send_with_subject_metadata(self, monkeypatch):
         ch = EmailChannel(
             smtp_host="smtp.example.com",
             username="user@example.com",
             password="pass123",
         )
 
-        mock_smtp = MagicMock()
-        with patch("smtplib.SMTP", return_value=mock_smtp):
-            mock_smtp.__enter__ = MagicMock(return_value=mock_smtp)
-            mock_smtp.__exit__ = MagicMock(return_value=False)
-            result = ch.send(
-                "recipient@example.com",
-                "Hello!",
-                metadata={"subject": "Custom Subject"},
-            )
-            assert result is True
-            sent_msg = mock_smtp.send_message.call_args[0][0]
-            assert sent_msg["Subject"] == "Custom Subject"
+        fake_smtp = _FakeSMTP()
+        monkeypatch.setattr("smtplib.SMTP", lambda h, p: fake_smtp)
+
+        result = ch.send(
+            "recipient@example.com",
+            "Hello!",
+            metadata={"subject": "Custom Subject"},
+        )
+        assert result is True
+        sent_msg = fake_smtp.send_message_calls[0]
+        assert sent_msg["Subject"] == "Custom Subject"
 
 
 class TestListChannels:
+    @pytest.mark.spec("REQ-channels.email")
     def test_list_channels(self):
         ch = EmailChannel(smtp_host="smtp.example.com", username="user@example.com")
         assert ch.list_channels() == ["email"]
 
 
 class TestStatus:
+    @pytest.mark.spec("REQ-channels.email")
     def test_disconnected_initially(self):
         ch = EmailChannel(smtp_host="smtp.example.com", username="user@example.com")
         assert ch.status() == ChannelStatus.DISCONNECTED
 
+    @pytest.mark.spec("REQ-channels.email")
     def test_no_config_connect_error(self):
         ch = EmailChannel()
         ch.connect()
@@ -184,6 +229,7 @@ class TestStatus:
 
 
 class TestConnect:
+    @pytest.mark.spec("REQ-channels.email")
     def test_connect_smtp_only(self):
         ch = EmailChannel(
             smtp_host="smtp.example.com",
@@ -196,14 +242,17 @@ class TestConnect:
 
 
 class TestOnMessage:
+    @pytest.mark.spec("REQ-channels.email")
     def test_on_message(self):
         ch = EmailChannel(smtp_host="smtp.example.com", username="user@example.com")
-        handler = MagicMock()
+        def handler(msg):
+            return None
         ch.on_message(handler)
         assert handler in ch._handlers
 
 
 class TestDisconnect:
+    @pytest.mark.spec("REQ-channels.email")
     def test_disconnect(self):
         ch = EmailChannel(
             smtp_host="smtp.example.com", username="user@example.com",

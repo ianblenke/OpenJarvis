@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from typing import Any, List
+
+import pytest
+
+
+class _FakeTraceStore:
+    """Typed fake for trace store used by trainers."""
+
+    def __init__(self, traces: List[Any] = None) -> None:
+        self._traces = traces or []
+
+    def list_traces(self, **kwargs) -> List[Any]:
+        return self._traces
 
 
 class TestGRPOConfig:
+    @pytest.mark.spec("REQ-learning.grpo-trainer")
     def test_default_config(self) -> None:
         from openjarvis.core.config import GRPOConfig
 
@@ -18,6 +31,7 @@ class TestGRPOConfig:
 
 
 class TestDefaultRewardFn:
+    @pytest.mark.spec("REQ-learning.grpo-trainer")
     def test_score_returns_float(self) -> None:
         from openjarvis.learning.intelligence.grpo_trainer import DefaultRewardFn
 
@@ -26,6 +40,7 @@ class TestDefaultRewardFn:
         assert isinstance(score, float)
         assert 0.0 <= score <= 1.0
 
+    @pytest.mark.spec("REQ-learning.grpo-trainer")
     def test_score_with_ground_truth(self) -> None:
         from openjarvis.learning.intelligence.grpo_trainer import DefaultRewardFn
 
@@ -37,6 +52,7 @@ class TestDefaultRewardFn:
 
 
 class TestGRPOTrainer:
+    @pytest.mark.spec("REQ-learning.grpo-trainer")
     def test_init(self) -> None:
         from openjarvis.core.config import GRPOConfig
         from openjarvis.learning.intelligence.grpo_trainer import GRPOTrainer
@@ -45,6 +61,7 @@ class TestGRPOTrainer:
         trainer = GRPOTrainer(cfg)
         assert trainer.config is cfg
 
+    @pytest.mark.spec("REQ-learning.grpo-trainer")
     def test_train_on_prompts_empty(self) -> None:
         from openjarvis.core.config import GRPOConfig
         from openjarvis.learning.intelligence.grpo_trainer import GRPOTrainer
@@ -53,6 +70,7 @@ class TestGRPOTrainer:
         result = trainer.train_on_prompts([])
         assert result["status"] == "skipped"
 
+    @pytest.mark.spec("REQ-learning.grpo-trainer")
     def test_train_on_prompts_too_few(self) -> None:
         from openjarvis.core.config import GRPOConfig
         from openjarvis.learning.intelligence.grpo_trainer import GRPOTrainer
@@ -62,6 +80,7 @@ class TestGRPOTrainer:
         assert result["status"] == "skipped"
         assert "min_prompts" in result.get("reason", "")
 
+    @pytest.mark.spec("REQ-learning.grpo-trainer")
     def test_custom_reward_fn(self) -> None:
         from openjarvis.core.config import GRPOConfig
         from openjarvis.learning.intelligence.grpo_trainer import GRPOTrainer
@@ -75,14 +94,22 @@ class TestGRPOTrainer:
         trainer = GRPOTrainer(GRPOConfig(), reward_fn=MyReward())
         assert trainer.reward_fn.score("a", "b", None) == 0.42
 
-    def test_train_delegates_to_miner(self) -> None:
+    @pytest.mark.spec("REQ-learning.grpo-trainer")
+    def test_train_delegates_to_miner(self, monkeypatch) -> None:
         from openjarvis.core.config import GRPOConfig
         from openjarvis.learning.intelligence.grpo_trainer import GRPOTrainer
 
         trainer = GRPOTrainer(GRPOConfig(min_prompts=1))
-        mock_store = MagicMock()
+        store = _FakeTraceStore()
 
-        with patch.object(trainer, "_mine_prompts", return_value=[]) as mock_mine:
-            result = trainer.train(mock_store)
-            mock_mine.assert_called_once_with(mock_store)
-            assert result["status"] == "skipped"
+        mine_called = False
+
+        def _fake_mine(s):
+            nonlocal mine_called
+            mine_called = True
+            return []
+
+        monkeypatch.setattr(trainer, "_mine_prompts", _fake_mine)
+        result = trainer.train(store)
+        assert mine_called
+        assert result["status"] == "skipped"

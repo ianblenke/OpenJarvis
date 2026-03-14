@@ -11,6 +11,7 @@ from openjarvis.core.registry import ChannelRegistry
 
 
 class TestChannelRegistry:
+    @pytest.mark.spec("REQ-channels.protocol.registration")
     def test_register_channel(self) -> None:
         """Register a dummy channel class and verify it is in ChannelRegistry."""
 
@@ -42,6 +43,7 @@ class TestChannelRegistry:
         assert ChannelRegistry.contains("dummy")
         assert ChannelRegistry.get("dummy") is DummyChannel
 
+    @pytest.mark.spec("REQ-channels.protocol.registration")
     def test_create_channel(self) -> None:
         """Register and create an instance via ChannelRegistry.create()."""
 
@@ -74,17 +76,20 @@ class TestChannelRegistry:
         assert isinstance(instance, CreatableChannel)
         assert instance.channel_id == "creatable"
 
+    @pytest.mark.spec("REQ-channels.protocol.registration")
     def test_duplicate_registration_raises(self) -> None:
         """Registering the same key twice should raise ValueError."""
         ChannelRegistry.register_value("dup", object)
         with pytest.raises(ValueError, match="already has an entry"):
             ChannelRegistry.register_value("dup", object)
 
+    @pytest.mark.spec("REQ-channels.protocol.registration")
     def test_get_missing_key_raises(self) -> None:
         """Getting an unregistered key should raise KeyError."""
         with pytest.raises(KeyError, match="does not have an entry"):
             ChannelRegistry.get("nonexistent")
 
+    @pytest.mark.spec("REQ-channels.protocol.registration")
     def test_keys_and_items(self) -> None:
         """Verify keys() and items() return registered entries."""
 

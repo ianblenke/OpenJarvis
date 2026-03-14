@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import pytest
 
 from openjarvis.agents._stubs import AgentContext
 from openjarvis.agents.rlm import RLMAgent
@@ -10,6 +10,7 @@ from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.registry import AgentRegistry
 from openjarvis.core.types import ToolResult
 from openjarvis.tools._stubs import BaseTool, ToolSpec
+from tests.fixtures.engines import FakeEngine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -40,41 +41,14 @@ class _CalcStub(BaseTool):
         return ToolResult(tool_name="calculator", content=str(val), success=True)
 
 
-def _make_engine(content: str = "Final answer.") -> MagicMock:
+def _make_engine(content: str = "Final answer.") -> FakeEngine:
     """Engine that returns plain content (no code block)."""
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.generate.return_value = {
-        "content": content,
-        "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
-        "model": "test-model",
-        "finish_reason": "stop",
-    }
-    return engine
+    return FakeEngine(engine_id="fake", responses=[content])
 
 
-def _make_engine_with_code(
-    code: str,
-    final_content: str = "Done.",
-) -> MagicMock:
-    """Engine that returns a python code block, then a final answer."""
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.generate.side_effect = [
-        {
-            "content": f"```python\n{code}\n```",
-            "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
-            "model": "test-model",
-            "finish_reason": "stop",
-        },
-        {
-            "content": final_content,
-            "usage": {"prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20},
-            "model": "test-model",
-            "finish_reason": "stop",
-        },
-    ]
-    return engine
+def _make_engine_with_responses(*responses: str) -> FakeEngine:
+    """Engine that returns a sequence of responses."""
+    return FakeEngine(engine_id="fake", responses=list(responses))
 
 
 # ---------------------------------------------------------------------------
@@ -83,11 +57,13 @@ def _make_engine_with_code(
 
 
 class TestRLMAgentRegistration:
+    @pytest.mark.spec("REQ-agents.base.registration")
     def test_registered(self):
         # Re-register after conftest clears all registries
         AgentRegistry.register_value("rlm", RLMAgent)
         assert AgentRegistry.contains("rlm")
 
+    @pytest.mark.spec("REQ-agents.base.registration")
     def test_agent_id(self):
         engine = _make_engine()
         agent = RLMAgent(engine, "test-model")
@@ -95,21 +71,25 @@ class TestRLMAgentRegistration:
 
 
 class TestRLMCodeExtraction:
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_extract_python_block(self):
         text = "Here is code:\n```python\nx = 1\n```\nDone."
         code = RLMAgent._extract_code(text)
         assert code == "x = 1"
 
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_extract_bare_block(self):
         text = "Here is code:\n```\nx = 1\n```\nDone."
         code = RLMAgent._extract_code(text)
         assert code == "x = 1"
 
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_no_block(self):
         text = "No code here, just text."
         code = RLMAgent._extract_code(text)
         assert code is None
 
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_python_preferred_over_bare(self):
         text = "```python\nx = 1\n```\n\n```\ny = 2\n```"
         code = RLMAgent._extract_code(text)
@@ -117,11 +97,13 @@ class TestRLMCodeExtraction:
 
 
 class TestRLMStripThink:
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_strip_think(self):
         text = "<think>thinking...</think>Answer here."
         result = RLMAgent._strip_think_tags(text)
         assert result == "Answer here."
 
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_no_think_tags(self):
         text = "Just text."
         result = RLMAgent._strip_think_tags(text)
@@ -129,6 +111,7 @@ class TestRLMStripThink:
 
 
 class TestRLMDirectAnswer:
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_no_code_block_returns_content(self):
         """When model returns no code block, treat content as final answer."""
         engine = _make_engine("The answer is 42.")
@@ -140,37 +123,26 @@ class TestRLMDirectAnswer:
 
 
 class TestRLMFinalTermination:
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_final_terminates(self):
         """FINAL() in code should terminate the agent."""
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.return_value = {
-            "content": "```python\nFINAL('hello world')\n```",
-            "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
-            "model": "test-model",
-            "finish_reason": "stop",
-        }
+        engine = _make_engine("```python\nFINAL('hello world')\n```")
         agent = RLMAgent(engine, "test-model")
         result = agent.run("Test")
         assert result.content == "hello world"
         assert len(result.tool_results) == 1
         assert result.tool_results[0].tool_name == "rlm_repl"
 
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_final_var_terminates(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.return_value = {
-            "content": "```python\nresult = 42\nFINAL_VAR('result')\n```",
-            "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
-            "model": "test-model",
-            "finish_reason": "stop",
-        }
+        engine = _make_engine("```python\nresult = 42\nFINAL_VAR('result')\n```")
         agent = RLMAgent(engine, "test-model")
         result = agent.run("Test")
         assert result.content == "42"
 
 
 class TestRLMContextInjection:
+    @pytest.mark.spec("REQ-agents.context")
     def test_context_from_metadata(self):
         engine = _make_engine("The answer is 42.")
         agent = RLMAgent(engine, "test-model")
@@ -178,6 +150,7 @@ class TestRLMContextInjection:
         result = agent.run("Summarize", context=ctx)
         assert result.content == "The answer is 42."
 
+    @pytest.mark.spec("REQ-agents.context")
     def test_context_from_memory_results(self):
         engine = _make_engine("Summary.")
         agent = RLMAgent(engine, "test-model")
@@ -187,112 +160,59 @@ class TestRLMContextInjection:
 
 
 class TestRLMSubLMCalls:
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_sub_lm_called_from_repl(self):
         """Verify that llm_query() inside REPL code calls engine.generate."""
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        # First call: root LM generates code that calls llm_query
-        # Second call: sub-LM responds to llm_query
-        # Third call: root LM gets REPL output, returns final (no code)
-        engine.generate.side_effect = [
-            {
-                "content": (
-                    "```python\n"
-                    "result = llm_query('What is 2+2?')\n"
-                    "FINAL(result)\n```"
-                ),
-                "usage": {
-                    "prompt_tokens": 5,
-                    "completion_tokens": 10,
-                    "total_tokens": 15,
-                },
-                "model": "test-model",
-                "finish_reason": "stop",
-            },
-            # Sub-LM response for llm_query
-            {
-                "content": "4",
-                "usage": {
-                    "prompt_tokens": 3,
-                    "completion_tokens": 1,
-                    "total_tokens": 4,
-                },
-                "model": "test-model",
-                "finish_reason": "stop",
-            },
-        ]
+        engine = _make_engine_with_responses(
+            # First call: root LM generates code that calls llm_query
+            "```python\n"
+            "result = llm_query('What is 2+2?')\n"
+            "FINAL(result)\n```",
+            # Second call: sub-LM responds to llm_query
+            "4",
+        )
         agent = RLMAgent(engine, "test-model")
         result = agent.run("Calculate")
         assert result.content == "4"
         # engine.generate should be called at least twice (root + sub)
-        assert engine.generate.call_count >= 2
+        assert engine.call_count >= 2
 
 
 class TestRLMMultiTurn:
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_multi_turn_loop(self):
-        """Agent should loop: generate code → execute → feed output → generate again."""
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.side_effect = [
+        """Agent should loop: generate -> execute -> feed -> repeat."""
+        engine = _make_engine_with_responses(
             # Turn 1: code that sets a variable
-            {
-                "content": (
-                    "```python\n"
-                    "x = 10\nprint(f'x = {x}')\n```"
-                ),
-                "usage": {
-                    "prompt_tokens": 5,
-                    "completion_tokens": 10,
-                    "total_tokens": 15,
-                },
-                "model": "test-model",
-                "finish_reason": "stop",
-            },
+            "```python\n"
+            "x = 10\nprint(f'x = {x}')\n```",
             # Turn 2: code that uses the variable and terminates
-            {
-                "content": (
-                    "```python\ny = x * 2\nFINAL(y)\n```"
-                ),
-                "usage": {
-                    "prompt_tokens": 20,
-                    "completion_tokens": 10,
-                    "total_tokens": 30,
-                },
-                "model": "test-model",
-                "finish_reason": "stop",
-            },
-        ]
+            "```python\ny = x * 2\nFINAL(y)\n```",
+        )
         agent = RLMAgent(engine, "test-model")
         result = agent.run("Calculate")
         assert result.content == "20"
         assert result.turns == 2
         assert len(result.tool_results) == 2
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_max_turns_exceeded(self):
         """Agent should stop after max_turns."""
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.return_value = {
-            "content": "```python\nprint('looping')\n```",
-            "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
-            "model": "test-model",
-            "finish_reason": "stop",
-        }
+        engine = _make_engine("```python\nprint('looping')\n```")
         agent = RLMAgent(engine, "test-model", max_turns=3)
         result = agent.run("Loop")
         assert result.turns == 3
         assert result.metadata.get("max_turns_exceeded") is True
 
+    @pytest.mark.spec("REQ-agents.tool-using.loop-guard")
     def test_max_turns_with_partial_answer(self):
         """When max turns exceeded but answer dict has value, use it."""
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.return_value = {
-            "content": "```python\nanswer['value'] = 'partial'\nprint('working')\n```",
-            "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
-            "model": "test-model",
-            "finish_reason": "stop",
-        }
+        code = (
+            "```python\n"
+            "answer['value'] = 'partial'\n"
+            "print('working')\n```"
+        )
+        engine = _make_engine(code)
         agent = RLMAgent(engine, "test-model", max_turns=2)
         result = agent.run("Work")
         assert result.content == "partial"
@@ -300,6 +220,7 @@ class TestRLMMultiTurn:
 
 
 class TestRLMEventBus:
+    @pytest.mark.spec("REQ-agents.base.events")
     def test_agent_events(self):
         bus = EventBus(record_history=True)
         engine = _make_engine("Direct answer.")
@@ -309,16 +230,10 @@ class TestRLMEventBus:
         assert EventType.AGENT_TURN_START in event_types
         assert EventType.AGENT_TURN_END in event_types
 
+    @pytest.mark.spec("REQ-agents.base.events")
     def test_agent_events_with_code(self):
         bus = EventBus(record_history=True)
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.return_value = {
-            "content": "```python\nFINAL('done')\n```",
-            "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
-            "model": "test-model",
-            "finish_reason": "stop",
-        }
+        engine = _make_engine("```python\nFINAL('done')\n```")
         agent = RLMAgent(engine, "test-model", bus=bus)
         agent.run("Test")
         event_types = [e.event_type for e in bus.history]
@@ -327,89 +242,47 @@ class TestRLMEventBus:
 
 
 class TestRLMSubLMWithTools:
+    @pytest.mark.spec("REQ-agents.tool-using.executor")
     def test_sub_lm_tool_resolution(self):
         """When sub-LM returns tool_calls, agent resolves them."""
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.side_effect = [
-            # Root LM: code that calls llm_query
-            {
-                "content": (
-                    "```python\n"
-                    "result = llm_query('Calculate 2+2')\n"
-                    "FINAL(result)\n```"
-                ),
-                "usage": {
-                    "prompt_tokens": 5,
-                    "completion_tokens": 10,
-                    "total_tokens": 15,
-                },
-                "model": "test-model",
-                "finish_reason": "stop",
-            },
-            # Sub-LM: returns tool call
-            {
-                "content": "",
-                "tool_calls": [
+        engine = FakeEngine(
+            engine_id="fake",
+            responses=[
+                # Root LM: code that calls llm_query
+                "```python\n"
+                "result = llm_query('Calculate 2+2')\n"
+                "FINAL(result)\n```",
+                # Sub-LM: returns empty content (tool call in tool_calls)
+                "",
+                # Sub-LM follow-up after tool result
+                "The answer is 4.",
+            ],
+            tool_calls=[
+                [],  # No tool calls for root response
+                [    # Sub-LM returns tool call
                     {
                         "id": "sub_0",
                         "name": "calculator",
                         "arguments": '{"expression":"2+2"}',
                     },
                 ],
-                "usage": {
-                    "prompt_tokens": 3,
-                    "completion_tokens": 5,
-                    "total_tokens": 8,
-                },
-                "model": "test-model",
-                "finish_reason": "tool_calls",
-            },
-            # Sub-LM follow-up after tool result
-            {
-                "content": "The answer is 4.",
-                "usage": {
-                    "prompt_tokens": 10,
-                    "completion_tokens": 5,
-                    "total_tokens": 15,
-                },
-                "model": "test-model",
-                "finish_reason": "stop",
-            },
-        ]
+                [],  # No tool calls for follow-up
+            ],
+        )
         agent = RLMAgent(engine, "test-model", tools=[_CalcStub()])
         result = agent.run("Calculate")
         assert result.content == "The answer is 4."
 
 
 class TestRLMBlockedCode:
+    @pytest.mark.spec("REQ-agents.base.run")
     def test_blocked_code_returns_error(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.side_effect = [
+        engine = _make_engine_with_responses(
             # Code with blocked pattern
-            {
-                "content": "```python\nos.system('ls')\n```",
-                "usage": {
-                    "prompt_tokens": 5,
-                    "completion_tokens": 10,
-                    "total_tokens": 15,
-                },
-                "model": "test-model",
-                "finish_reason": "stop",
-            },
+            "```python\nos.system('ls')\n```",
             # After error feedback, model gives direct answer
-            {
-                "content": "I apologize, let me answer directly.",
-                "usage": {
-                    "prompt_tokens": 15,
-                    "completion_tokens": 5,
-                    "total_tokens": 20,
-                },
-                "model": "test-model",
-                "finish_reason": "stop",
-            },
-        ]
+            "I apologize, let me answer directly.",
+        )
         agent = RLMAgent(engine, "test-model")
         result = agent.run("Test")
         assert result.content == "I apologize, let me answer directly."
@@ -422,39 +295,35 @@ class TestRLMBlockedCode:
 class TestRLMToolSectionInjection:
     """Verify that tool descriptions are injected into the RLM system prompt."""
 
+    @pytest.mark.spec("REQ-agents.tool-using.protocol")
     def test_system_prompt_includes_tool_section(self):
         """Tools provided -> system prompt includes descriptions."""
         engine = _make_engine("Direct answer.")
         agent = RLMAgent(engine, "test-model", tools=[_CalcStub()])
         agent.run("Hello")
-        call_args = engine.generate.call_args
-        messages = call_args[0][0]
+        call = engine.call_history[0]
+        messages = call["messages"]
         system_msg = messages[0].content
         assert "## Available Tools" in system_msg
         assert "### calculator" in system_msg
         assert "expression" in system_msg
 
+    @pytest.mark.spec("REQ-agents.tool-using.protocol")
     def test_system_prompt_no_tool_section_without_tools(self):
         """No tools -> system prompt has no tool section."""
         engine = _make_engine("Direct answer.")
         agent = RLMAgent(engine, "test-model")
         agent.run("Hello")
-        call_args = engine.generate.call_args
-        messages = call_args[0][0]
+        call = engine.call_history[0]
+        messages = call["messages"]
         system_msg = messages[0].content
         assert "## Available Tools" not in system_msg
 
 
 class TestRLMReplResults:
+    @pytest.mark.spec("REQ-agents.result")
     def test_repl_results_in_tool_results(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.return_value = {
-            "content": "```python\nprint('hello')\nFINAL('done')\n```",
-            "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
-            "model": "test-model",
-            "finish_reason": "stop",
-        }
+        engine = _make_engine("```python\nprint('hello')\nFINAL('done')\n```")
         agent = RLMAgent(engine, "test-model")
         result = agent.run("Test")
         assert len(result.tool_results) == 1

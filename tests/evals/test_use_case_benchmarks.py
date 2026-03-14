@@ -13,9 +13,9 @@ Tests verify:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock  # noqa: I001
-
 import pytest
+
+from tests.fixtures.engines import FakeInferenceBackend
 
 # ---------------------------------------------------------------------------
 # Dataset instantiation and loading
@@ -23,12 +23,14 @@ import pytest
 
 
 class TestEmailTriageDataset:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_instantiation(self) -> None:
         from openjarvis.evals.datasets.email_triage import EmailTriageDataset
         ds = EmailTriageDataset()
         assert ds.dataset_id == "email_triage"
         assert ds.dataset_name == "Email Triage"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_load(self) -> None:
         from openjarvis.evals.datasets.email_triage import EmailTriageDataset
         ds = EmailTriageDataset()
@@ -42,6 +44,7 @@ class TestEmailTriageDataset:
         assert "urgency" in r.metadata
         assert "category" in r.metadata
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_load_all(self) -> None:
         from openjarvis.evals.datasets.email_triage import EmailTriageDataset
         ds = EmailTriageDataset()
@@ -50,12 +53,14 @@ class TestEmailTriageDataset:
 
 
 class TestMorningBriefDataset:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_instantiation(self) -> None:
         from openjarvis.evals.datasets.morning_brief import MorningBriefDataset
         ds = MorningBriefDataset()
         assert ds.dataset_id == "morning_brief"
         assert ds.dataset_name == "Morning Brief"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_load(self) -> None:
         from openjarvis.evals.datasets.morning_brief import MorningBriefDataset
         ds = MorningBriefDataset()
@@ -66,6 +71,7 @@ class TestMorningBriefDataset:
         assert r.record_id.startswith("morning-brief-")
         assert r.reference  # key_priorities not empty
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_load_all(self) -> None:
         from openjarvis.evals.datasets.morning_brief import MorningBriefDataset
         ds = MorningBriefDataset()
@@ -74,12 +80,14 @@ class TestMorningBriefDataset:
 
 
 class TestResearchMiningDataset:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_instantiation(self) -> None:
         from openjarvis.evals.datasets.research_mining import ResearchMiningDataset
         ds = ResearchMiningDataset()
         assert ds.dataset_id == "research_mining"
         assert ds.dataset_name == "Research Mining"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_load(self) -> None:
         from openjarvis.evals.datasets.research_mining import ResearchMiningDataset
         ds = ResearchMiningDataset()
@@ -90,6 +98,7 @@ class TestResearchMiningDataset:
         assert r.record_id.startswith("research-mining-")
         assert "domain" in r.metadata
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_load_all(self) -> None:
         from openjarvis.evals.datasets.research_mining import ResearchMiningDataset
         ds = ResearchMiningDataset()
@@ -98,12 +107,14 @@ class TestResearchMiningDataset:
 
 
 class TestKnowledgeBaseDataset:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_instantiation(self) -> None:
         from openjarvis.evals.datasets.knowledge_base import KnowledgeBaseDataset
         ds = KnowledgeBaseDataset()
         assert ds.dataset_id == "knowledge_base"
         assert ds.dataset_name == "Knowledge Base"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_load(self) -> None:
         from openjarvis.evals.datasets.knowledge_base import KnowledgeBaseDataset
         ds = KnowledgeBaseDataset()
@@ -114,6 +125,7 @@ class TestKnowledgeBaseDataset:
         assert r.record_id.startswith("knowledge-base-")
         assert r.reference  # answer not empty
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_load_all(self) -> None:
         from openjarvis.evals.datasets.knowledge_base import KnowledgeBaseDataset
         ds = KnowledgeBaseDataset()
@@ -122,12 +134,14 @@ class TestKnowledgeBaseDataset:
 
 
 class TestCodingTaskDataset:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_instantiation(self) -> None:
         from openjarvis.evals.datasets.coding_task import CodingTaskDataset
         ds = CodingTaskDataset()
         assert ds.dataset_id == "coding_task"
         assert ds.dataset_name == "Coding Task"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_load(self) -> None:
         from openjarvis.evals.datasets.coding_task import CodingTaskDataset
         ds = CodingTaskDataset()
@@ -139,6 +153,7 @@ class TestCodingTaskDataset:
         assert "test_cases" in r.metadata
         assert "signature" in r.metadata
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_load_all(self) -> None:
         from openjarvis.evals.datasets.coding_task import CodingTaskDataset
         ds = CodingTaskDataset()
@@ -152,32 +167,37 @@ class TestCodingTaskDataset:
 
 
 class TestScorerInstantiation:
-    def _mock_backend(self):
-        return MagicMock()
+    def _fake_backend(self):
+        return FakeInferenceBackend(responses=["A"])
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_email_triage_scorer(self) -> None:
         from openjarvis.evals.scorers.email_triage import EmailTriageScorer
-        scorer = EmailTriageScorer(self._mock_backend(), "gpt-5-mini")
+        scorer = EmailTriageScorer(self._fake_backend(), "gpt-5-mini")
         assert scorer.scorer_id == "email_triage"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_morning_brief_scorer(self) -> None:
         from openjarvis.evals.scorers.morning_brief import MorningBriefScorer
-        scorer = MorningBriefScorer(self._mock_backend(), "gpt-5-mini")
+        scorer = MorningBriefScorer(self._fake_backend(), "gpt-5-mini")
         assert scorer.scorer_id == "morning_brief"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_research_mining_scorer(self) -> None:
         from openjarvis.evals.scorers.research_mining import ResearchMiningScorer
-        scorer = ResearchMiningScorer(self._mock_backend(), "gpt-5-mini")
+        scorer = ResearchMiningScorer(self._fake_backend(), "gpt-5-mini")
         assert scorer.scorer_id == "research_mining"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_knowledge_base_scorer(self) -> None:
         from openjarvis.evals.scorers.knowledge_base import KnowledgeBaseScorer
-        scorer = KnowledgeBaseScorer(self._mock_backend(), "gpt-5-mini")
+        scorer = KnowledgeBaseScorer(self._fake_backend(), "gpt-5-mini")
         assert scorer.scorer_id == "knowledge_base"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_coding_task_scorer(self) -> None:
         from openjarvis.evals.scorers.coding_task import CodingTaskScorer
-        scorer = CodingTaskScorer(self._mock_backend(), "gpt-5-mini")
+        scorer = CodingTaskScorer(self._fake_backend(), "gpt-5-mini")
         assert scorer.scorer_id == "coding_task"
 
 
@@ -189,6 +209,7 @@ class TestScorerInstantiation:
 class TestCodingTaskScoring:
     """Test the coding task scorer with actual code execution."""
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_correct_answer(self) -> None:
         from openjarvis.evals.core.types import EvalRecord
         from openjarvis.evals.scorers.coding_task import CodingTaskScorer
@@ -217,6 +238,7 @@ class TestCodingTaskScoring:
         assert meta["tests_passed"] == 3
         assert meta["pass_rate"] == 1.0
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_incorrect_answer(self) -> None:
         from openjarvis.evals.core.types import EvalRecord
         from openjarvis.evals.scorers.coding_task import CodingTaskScorer
@@ -239,6 +261,7 @@ class TestCodingTaskScoring:
         is_correct, meta = scorer.score(record, answer)
         assert is_correct is False
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_empty_answer(self) -> None:
         from openjarvis.evals.core.types import EvalRecord
         from openjarvis.evals.scorers.coding_task import CodingTaskScorer
@@ -259,11 +282,12 @@ class TestCodingTaskScoring:
 class TestEmailTriageScoring:
     """Test exact-match path of email triage scorer."""
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_exact_match(self) -> None:
         from openjarvis.evals.core.types import EvalRecord
         from openjarvis.evals.scorers.email_triage import EmailTriageScorer
 
-        scorer = EmailTriageScorer(MagicMock(), "gpt-5-mini")
+        scorer = EmailTriageScorer(FakeInferenceBackend(responses=["A"]), "gpt-5-mini")
         record = EvalRecord(
             record_id="test-1",
             problem="...",
@@ -292,6 +316,7 @@ class TestCLIFactories:
         "knowledge_base",
         "coding_task",
     ])
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_build_dataset(self, benchmark: str) -> None:
         from openjarvis.evals.cli import _build_dataset
         ds = _build_dataset(benchmark)
@@ -304,9 +329,14 @@ class TestCLIFactories:
         "knowledge_base",
         "coding_task",
     ])
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_build_scorer(self, benchmark: str) -> None:
         from openjarvis.evals.cli import _build_scorer
-        scorer = _build_scorer(benchmark, MagicMock(), "gpt-5-mini")
+        scorer = _build_scorer(
+            benchmark,
+            FakeInferenceBackend(responses=["A"]),
+            "gpt-5-mini",
+        )
         assert scorer.scorer_id == benchmark
 
 
@@ -318,6 +348,7 @@ class TestCLIFactories:
 class TestCostCalculator:
     """Test the cost calculator module."""
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_estimate_monthly_cost(self) -> None:
         from openjarvis.server.cost_calculator import estimate_monthly_cost
         est = estimate_monthly_cost(
@@ -330,6 +361,7 @@ class TestCostCalculator:
         assert est.annual_cost == est.monthly_cost * 12
         assert est.total_calls_per_month == 1000
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_estimate_scenario(self) -> None:
         from openjarvis.server.cost_calculator import estimate_scenario
         estimates = estimate_scenario("daily_briefing")
@@ -337,16 +369,19 @@ class TestCostCalculator:
         for est in estimates:
             assert est.monthly_cost > 0
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_estimate_all_scenarios(self) -> None:
         from openjarvis.server.cost_calculator import estimate_all_scenarios
         all_est = estimate_all_scenarios()
         assert len(all_est) == 5  # 5 scenarios
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_unknown_provider(self) -> None:
         from openjarvis.server.cost_calculator import estimate_monthly_cost
         with pytest.raises(ValueError, match="Unknown provider"):
             estimate_monthly_cost(100, 100, 100, "nonexistent")
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_unknown_scenario(self) -> None:
         from openjarvis.server.cost_calculator import estimate_scenario
         with pytest.raises(ValueError, match="Unknown scenario"):
@@ -361,6 +396,7 @@ class TestCostCalculator:
 class TestSavings:
     """Test the savings computation module."""
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_compute_savings_basic(self) -> None:
         from openjarvis.server.savings import compute_savings
         summary = compute_savings(1000, 500, total_calls=10)
@@ -371,6 +407,7 @@ class TestSavings:
         for p in summary.per_provider:
             assert p.total_cost > 0
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_compute_savings_with_session(self) -> None:
         import time
 
@@ -382,6 +419,7 @@ class TestSavings:
         assert summary.session_duration_hours > 0
         assert summary.monthly_projection  # not empty
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_savings_to_dict(self) -> None:
         from openjarvis.server.savings import compute_savings, savings_to_dict
         summary = compute_savings(1000, 500, total_calls=5)

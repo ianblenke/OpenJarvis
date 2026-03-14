@@ -22,19 +22,23 @@ A100_PEAK_BW_GB_S = 2039.0  # HBM2e
 # estimate_model_flops_per_token
 # ---------------------------------------------------------------------------
 class TestEstimateModelFlopsPerToken:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_7b_dense(self) -> None:
         flops = estimate_model_flops_per_token(7.0)
         assert flops == pytest.approx(14e9)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_70b_dense(self) -> None:
         flops = estimate_model_flops_per_token(70.0)
         assert flops == pytest.approx(140e9)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_moe_mixtral(self) -> None:
         # Mixtral 8x7B: ~47B total, ~13B active per token
         flops = estimate_model_flops_per_token(47.0, active_params_b=13.0)
         assert flops == pytest.approx(26e9)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_active_params_none_uses_total(self) -> None:
         result = estimate_model_flops_per_token(7.0, None)
         assert result == estimate_model_flops_per_token(7.0)
@@ -44,14 +48,17 @@ class TestEstimateModelFlopsPerToken:
 # estimate_model_bytes_per_token
 # ---------------------------------------------------------------------------
 class TestEstimateModelBytesPerToken:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_7b_fp16(self) -> None:
         bpt = estimate_model_bytes_per_token(7.0)
         assert bpt == pytest.approx(14e9)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_7b_int8(self) -> None:
         bpt = estimate_model_bytes_per_token(7.0, bytes_per_param=1.0)
         assert bpt == pytest.approx(7e9)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_70b_fp16(self) -> None:
         bpt = estimate_model_bytes_per_token(70.0)
         assert bpt == pytest.approx(140e9)
@@ -61,6 +68,7 @@ class TestEstimateModelBytesPerToken:
 # compute_efficiency
 # ---------------------------------------------------------------------------
 class TestComputeEfficiency:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_7b_100tps_single_gpu(self) -> None:
         """7B model, 100 tok/s, single A100."""
         m = compute_efficiency(
@@ -84,6 +92,7 @@ class TestComputeEfficiency:
         expected_mbu = 1400.0 / 2039.0 * 100.0
         assert m.mbu_pct == pytest.approx(expected_mbu)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_multi_gpu_scaling(self) -> None:
         """2 GPUs should double peak, halving utilization at same throughput."""
         m1 = compute_efficiency(
@@ -107,6 +116,7 @@ class TestComputeEfficiency:
         assert m2.peak_flops == pytest.approx(m1.peak_flops * 2.0)
         assert m2.peak_bandwidth_gb_s == pytest.approx(m1.peak_bandwidth_gb_s * 2.0)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_ipj_with_energy(self) -> None:
         m = compute_efficiency(
             param_count_b=7.0,
@@ -119,6 +129,7 @@ class TestComputeEfficiency:
         )
         assert m.ipj == pytest.approx(0.8 / 50.0)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_ipj_zero_energy(self) -> None:
         m = compute_efficiency(
             param_count_b=7.0,
@@ -131,6 +142,7 @@ class TestComputeEfficiency:
         )
         assert m.ipj == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_zero_tokens_per_sec(self) -> None:
         m = compute_efficiency(
             param_count_b=7.0,
@@ -144,6 +156,7 @@ class TestComputeEfficiency:
         assert m.actual_flops == 0.0
         assert m.actual_bandwidth_gb_s == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_moe_efficiency(self) -> None:
         """MoE model: FLOPs use active params, bandwidth uses total params."""
         m = compute_efficiency(
@@ -158,6 +171,7 @@ class TestComputeEfficiency:
         # bandwidth based on total params: 47e9*2*50/1e9 = 4700 GB/s
         assert m.actual_bandwidth_gb_s == pytest.approx(4700.0)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_returns_dataclass(self) -> None:
         m = compute_efficiency(
             param_count_b=7.0,
@@ -168,6 +182,7 @@ class TestComputeEfficiency:
         )
         assert isinstance(m, EfficiencyMetrics)
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_custom_bytes_per_param(self) -> None:
         """INT4 quantization: 0.5 bytes per param."""
         m = compute_efficiency(

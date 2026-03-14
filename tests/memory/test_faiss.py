@@ -63,12 +63,14 @@ def _make_backend() -> FAISSMemory:
 # ------------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_registration():
     """Importing the module registers 'faiss' in MemoryRegistry."""
     MemoryRegistry.register_value("faiss", FAISSMemory)
     assert MemoryRegistry.contains("faiss")
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_store_returns_id():
     """store() returns a 32-char hex UUID."""
     backend = _make_backend()
@@ -77,6 +79,7 @@ def test_store_returns_id():
     assert len(doc_id) == 32
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_store_and_retrieve_semantic():
     """Stored documents can be retrieved by query."""
     backend = _make_backend()
@@ -87,6 +90,7 @@ def test_store_and_retrieve_semantic():
     assert all(isinstance(r, RetrievalResult) for r in results)
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_top_k():
     """retrieve() respects the top_k parameter."""
     backend = _make_backend()
@@ -96,6 +100,7 @@ def test_top_k():
     assert len(results) <= 3
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_retrieve_empty():
     """Querying an empty backend returns an empty list."""
     backend = _make_backend()
@@ -103,6 +108,7 @@ def test_retrieve_empty():
     assert results == []
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_delete_soft():
     """delete() soft-deletes; doc no longer appears in results."""
     backend = _make_backend()
@@ -115,12 +121,14 @@ def test_delete_soft():
         assert r.content != "deletable content"
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_delete_nonexistent():
     """delete() returns False for unknown ids."""
     backend = _make_backend()
     assert backend.delete("nonexistent_id") is False
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_clear():
     """clear() resets all storage and the FAISS index."""
     backend = _make_backend()
@@ -135,6 +143,7 @@ def test_clear():
     assert results == []
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_cosine_similarity_ordering():
     """Results are ordered by descending cosine similarity."""
     backend = _make_backend()
@@ -147,6 +156,7 @@ def test_cosine_similarity_ordering():
     assert scores == sorted(scores, reverse=True)
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_source_and_metadata_roundtrip():
     """source and metadata survive store/retrieve."""
     backend = _make_backend()
@@ -163,6 +173,7 @@ def test_source_and_metadata_roundtrip():
     assert results[0].metadata["page"] == 42
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_event_bus_store():
     """store() publishes MEMORY_STORE event."""
     bus = EventBus(record_history=True)
@@ -186,6 +197,7 @@ def test_event_bus_store():
         mod.get_event_bus = original
 
 
+@pytest.mark.spec("REQ-storage.faiss")
 def test_event_bus_retrieve():
     """retrieve() publishes MEMORY_RETRIEVE event."""
     bus = EventBus(record_history=True)

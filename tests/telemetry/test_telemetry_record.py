@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.core.types import TelemetryRecord
 
 
 class TestTelemetryRecord:
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_tokens_per_joule_field_exists(self):
         rec = TelemetryRecord(timestamp=1.0, model_id="test")
         assert hasattr(rec, "tokens_per_joule")
         assert rec.tokens_per_joule == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.store.record")
     def test_tokens_per_joule_set(self):
         rec = TelemetryRecord(
             timestamp=1.0,

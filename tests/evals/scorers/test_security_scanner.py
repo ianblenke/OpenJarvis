@@ -1,5 +1,7 @@
 """Tests for the security_scanner scorer."""
 
+import pytest
+
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.scorers.security_scanner import SecurityScannerScorer
 
@@ -27,6 +29,7 @@ def _vuln(file, vtype, severity, desc=""):
     }
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_all_vulns_found():
     vulns = [
         _vuln("app.py", "sql_injection", "critical"),
@@ -53,6 +56,7 @@ def test_all_vulns_found():
     assert is_correct is True
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_partial_detection():
     vulns = [
         _vuln("app.py", "sql_injection", "critical"),
@@ -71,6 +75,7 @@ def test_partial_detection():
     assert is_correct is False
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_empty_answer():
     vulns = [_vuln("app.py", "xss", "high")]
     record = _make_record(vulns)
@@ -80,6 +85,7 @@ def test_empty_answer():
     assert meta["reason"] == "empty_response"
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_false_positive_penalty():
     vulns = [_vuln("app.py", "sql_injection", "critical")]
     safe = [
@@ -102,6 +108,7 @@ def test_false_positive_penalty():
     assert meta["false_positives"] >= 1
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_vuln_type_aliases():
     vulns = [_vuln("app.py", "xss", "high")]
     record = _make_record(vulns)
@@ -116,6 +123,7 @@ def test_vuln_type_aliases():
     assert meta["detection_rate"] == 1.0
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_no_vulnerabilities():
     record = _make_record([])
     scorer = SecurityScannerScorer()

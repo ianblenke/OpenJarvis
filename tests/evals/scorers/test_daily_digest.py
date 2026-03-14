@@ -1,5 +1,7 @@
 """Tests for the daily_digest scorer."""
 
+import pytest
+
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.scorers.daily_digest import DailyDigestScorer
 
@@ -19,6 +21,7 @@ def _make_record(must_mention, priority_order=None):
     )
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_all_items_mentioned():
     items = ["sprint planning", "PR review", "team lunch"]
     record = _make_record(items, ["sprint planning", "PR review"])
@@ -39,6 +42,7 @@ def test_all_items_mentioned():
     assert is_correct is True
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_partial_mention():
     items = ["deploy review", "security audit", "team retro"]
     record = _make_record(items)
@@ -50,6 +54,7 @@ def test_partial_mention():
     assert 0.6 <= meta["phrase_score"] <= 0.7
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_ordering_score():
     items = ["urgent outage", "sprint planning", "lunch"]
     priority = ["urgent outage", "sprint planning"]
@@ -66,6 +71,7 @@ def test_ordering_score():
     assert meta["ordering_score"] >= 0.5
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_empty_answer():
     record = _make_record(["item1", "item2"])
     scorer = DailyDigestScorer()
@@ -74,6 +80,7 @@ def test_empty_answer():
     assert meta["reason"] == "empty_response"
 
 
+@pytest.mark.spec("REQ-evals.scorers")
 def test_no_must_mention():
     record = EvalRecord(
         record_id="test-dd-2",

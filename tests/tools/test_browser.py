@@ -3,56 +3,137 @@
 from __future__ import annotations
 
 import base64
-from unittest.mock import MagicMock, PropertyMock, patch
+import builtins
+from typing import Any, Dict, List, Optional
 
 import pytest
 
 from openjarvis.core.registry import ToolRegistry
 
 # ---------------------------------------------------------------------------
-# Helpers — mock the _session before importing tools
+# Typed fakes replacing MagicMock for Playwright objects
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_page():
-    """Create a fully mocked Playwright page object."""
-    page = MagicMock()
-    page.title.return_value = "Test Page"
-    page.inner_text.return_value = "Hello World"
-    page.screenshot.return_value = b"\x89PNG\x00fake-screenshot-data"
+class FakePage:
+    """Typed fake for a Playwright Page object.
 
-    response = MagicMock()
-    response.status = 200
-    page.goto.return_value = response
+    Tracks method calls and returns configurable values.
+    """
 
-    page.click.return_value = None
-    page.get_by_text.return_value = MagicMock()
-    page.fill.return_value = None
-    page.type.return_value = None
-    page.eval_on_selector_all.return_value = []
+    def __init__(self) -> None:
+        self._title: str = "Test Page"
+        self._inner_text: str = "Hello World"
+        self._screenshot_data: bytes = b"\x89PNG\x00fake-screenshot-data"
+        self._goto_status: int = 200
+        self._goto_error: Optional[Exception] = None
+        self._click_error: Optional[Exception] = None
+        self._fill_error: Optional[Exception] = None
+        self._screenshot_error: Optional[Exception] = None
+        self._inner_text_error: Optional[Exception] = None
+        self._eval_results: list = []
 
-    return page
+        # Call tracking
+        self.goto_calls: List[Dict[str, Any]] = []
+        self.click_calls: List[str] = []
+        self.fill_calls: List[tuple[str, str]] = []
+        self.type_calls: List[tuple[str, str]] = []
+        self.get_by_text_calls: List[str] = []
+        self.inner_text_calls: List[str] = []
+        self.screenshot_calls: List[Dict[str, Any]] = []
+
+    def title(self) -> str:
+        return self._title
+
+    def inner_text(self, selector: str = "body") -> str:
+        self.inner_text_calls.append(selector)
+        if self._inner_text_error is not None:
+            raise self._inner_text_error
+        return self._inner_text
+
+    def screenshot(self, **kwargs: Any) -> bytes:
+        self.screenshot_calls.append(kwargs)
+        if self._screenshot_error is not None:
+            raise self._screenshot_error
+        return self._screenshot_data
+
+    def goto(self, url: str, **kwargs: Any) -> "FakeResponse":
+        self.goto_calls.append({"url": url, **kwargs})
+        if self._goto_error is not None:
+            raise self._goto_error
+        return FakeResponse(status=self._goto_status)
+
+    def click(self, selector: str) -> None:
+        self.click_calls.append(selector)
+        if self._click_error is not None:
+            raise self._click_error
+
+    def get_by_text(self, text: str) -> "FakeLocator":
+        self.get_by_text_calls.append(text)
+        return FakeLocator()
+
+    def fill(self, selector: str, value: str) -> None:
+        self.fill_calls.append((selector, value))
+        if self._fill_error is not None:
+            raise self._fill_error
+
+    def type(self, selector: str, text: str) -> None:
+        self.type_calls.append((selector, text))
+
+    def eval_on_selector_all(self, selector: str, expression: str) -> list:
+        return self._eval_results
 
 
-def _make_mock_session(page=None):
-    """Create a mocked _BrowserSession whose .page returns a mock page."""
-    if page is None:
-        page = _make_mock_page()
-    session = MagicMock()
-    type(session).page = PropertyMock(return_value=page)
-    return session
+class FakeResponse:
+    """Typed fake for Playwright Response."""
+
+    def __init__(self, status: int = 200) -> None:
+        self.status = status
 
 
-def _make_import_error_session():
-    """Create a session whose .page raises ImportError."""
-    session = MagicMock()
-    type(session).page = PropertyMock(
-        side_effect=ImportError(
-            "playwright not installed. Install with: "
-            "uv sync --extra browser"
+class FakeLocator:
+    """Typed fake for Playwright Locator (from get_by_text)."""
+
+    def __init__(self) -> None:
+        self.click_count = 0
+
+    def click(self) -> None:
+        self.click_count += 1
+
+
+class FakeBrowserSession:
+    """Typed fake for _BrowserSession.
+
+    Replaces the MagicMock session pattern with a real object that
+    exposes a configurable FakePage.
+    """
+
+    def __init__(self, page: Optional[FakePage] = None) -> None:
+        self._page = page or FakePage()
+
+    @property
+    def page(self) -> FakePage:
+        return self._page
+
+
+class ImportErrorBrowserSession:
+    """Fake session whose .page raises ImportError."""
+
+    @property
+    def page(self) -> FakePage:
+        raise ImportError(
+            "playwright not installed. Install with: uv sync --extra browser"
         )
-    )
-    return session
+
+
+class SsrfBlockingModule:
+    """Typed fake for openjarvis.security.ssrf module."""
+
+    def __init__(self, blocked_message: Optional[str] = None) -> None:
+        self._blocked = blocked_message
+
+    def check_ssrf(self, url: str) -> Optional[str]:
+        return self._blocked
 
 
 # ---------------------------------------------------------------------------
@@ -61,6 +142,7 @@ def _make_import_error_session():
 
 
 class TestBrowserNavigateTool:
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_name_and_category(self):
         from openjarvis.tools.browser import BrowserNavigateTool
 
@@ -68,6 +150,7 @@ class TestBrowserNavigateTool:
         assert tool.spec.name == "browser_navigate"
         assert tool.spec.category == "browser"
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_requires_url_parameter(self):
         from openjarvis.tools.browser import BrowserNavigateTool
 
@@ -75,24 +158,28 @@ class TestBrowserNavigateTool:
         assert "url" in tool.spec.parameters["properties"]
         assert "url" in tool.spec.parameters["required"]
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_has_wait_for_parameter(self):
         from openjarvis.tools.browser import BrowserNavigateTool
 
         tool = BrowserNavigateTool()
         assert "wait_for" in tool.spec.parameters["properties"]
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_required_capabilities(self):
         from openjarvis.tools.browser import BrowserNavigateTool
 
         tool = BrowserNavigateTool()
         assert "network:fetch" in tool.spec.required_capabilities
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_tool_id(self):
         from openjarvis.tools.browser import BrowserNavigateTool
 
         tool = BrowserNavigateTool()
         assert tool.tool_id == "browser_navigate"
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_execute_no_url(self):
         from openjarvis.tools.browser import BrowserNavigateTool
 
@@ -101,6 +188,7 @@ class TestBrowserNavigateTool:
         assert result.success is False
         assert "No URL" in result.content
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_execute_no_url_param(self):
         from openjarvis.tools.browser import BrowserNavigateTool
 
@@ -109,42 +197,46 @@ class TestBrowserNavigateTool:
         assert result.success is False
         assert "No URL" in result.content
 
-    def test_execute_playwright_not_installed(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_playwright_not_installed(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserNavigateTool
 
-        session = _make_import_error_session()
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserNavigateTool()
-            result = tool.execute(url="https://example.com")
+        session = ImportErrorBrowserSession()
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserNavigateTool()
+        result = tool.execute(url="https://example.com")
         assert result.success is False
         assert "playwright not installed" in result.content
 
-    def test_execute_ssrf_blocked(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_ssrf_blocked(self, monkeypatch):
         from openjarvis.tools.browser import BrowserNavigateTool
 
-        mock_ssrf_module = MagicMock()
-        mock_ssrf_module.check_ssrf.return_value = (
-            "Blocked host: 169.254.169.254 (cloud metadata endpoint)"
+        ssrf_mod = SsrfBlockingModule(
+            "Blocked host: 169.254.169.254 (cloud metadata endpoint)",
         )
-        with patch.dict(
-            "sys.modules",
-            {"openjarvis.security.ssrf": mock_ssrf_module},
-        ):
-            tool = BrowserNavigateTool()
-            result = tool.execute(url="http://169.254.169.254/latest/meta-data/")
+        monkeypatch.setitem(
+            __import__("sys").modules,
+            "openjarvis.security.ssrf",
+            ssrf_mod,
+        )
+
+        tool = BrowserNavigateTool()
+        result = tool.execute(url="http://169.254.169.254/latest/meta-data/")
 
         assert result.success is False
         assert "SSRF blocked" in result.content
 
-    def test_execute_ssrf_module_missing(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_ssrf_module_missing(self, monkeypatch):
         """When ssrf module is not available, skip check and proceed."""
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserNavigateTool
 
-        page = _make_mock_page()
-        session = _make_mock_session(page)
+        page = FakePage()
+        session = FakeBrowserSession(page)
 
-        # Make the ssrf import fail inside execute
-        import builtins
         original_import = builtins.__import__
 
         def _mock_import(name, *args, **kwargs):
@@ -152,24 +244,26 @@ class TestBrowserNavigateTool:
                 raise ImportError("No module named 'openjarvis.security.ssrf'")
             return original_import(name, *args, **kwargs)
 
-        with patch("openjarvis.tools.browser._session", session):
-            with patch.object(builtins, "__import__", side_effect=_mock_import):
-                tool = BrowserNavigateTool()
-                result = tool.execute(url="https://example.com")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        monkeypatch.setattr(builtins, "__import__", _mock_import)
+        tool = BrowserNavigateTool()
+        result = tool.execute(url="https://example.com")
         # Should succeed since SSRF check is skipped
         assert result.success is True
 
-    def test_execute_success(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_success(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserNavigateTool
 
-        page = _make_mock_page()
-        page.title.return_value = "Example Domain"
-        page.inner_text.return_value = "Example page content"
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._title = "Example Domain"
+        page._inner_text = "Example page content"
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserNavigateTool()
-            result = tool.execute(url="https://example.com")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserNavigateTool()
+        result = tool.execute(url="https://example.com")
 
         assert result.success is True
         assert "Example Domain" in result.content
@@ -178,62 +272,69 @@ class TestBrowserNavigateTool:
         assert result.metadata["title"] == "Example Domain"
         assert result.metadata["status"] == 200
 
-    def test_execute_with_wait_for(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_with_wait_for(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserNavigateTool
 
-        page = _make_mock_page()
-        session = _make_mock_session(page)
+        page = FakePage()
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserNavigateTool()
-            tool.execute(url="https://example.com", wait_for="networkidle")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserNavigateTool()
+        tool.execute(url="https://example.com", wait_for="networkidle")
 
-        page.goto.assert_called_once_with(
-            "https://example.com", wait_until="networkidle"
-        )
+        assert len(page.goto_calls) == 1
+        assert page.goto_calls[0]["url"] == "https://example.com"
+        assert page.goto_calls[0]["wait_until"] == "networkidle"
 
-    def test_execute_invalid_wait_for_defaults_to_load(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_invalid_wait_for_defaults_to_load(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserNavigateTool
 
-        page = _make_mock_page()
-        session = _make_mock_session(page)
+        page = FakePage()
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserNavigateTool()
-            tool.execute(url="https://example.com", wait_for="invalid")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserNavigateTool()
+        tool.execute(url="https://example.com", wait_for="invalid")
 
-        page.goto.assert_called_once_with(
-            "https://example.com", wait_until="load"
-        )
+        assert page.goto_calls[0]["wait_until"] == "load"
 
-    def test_execute_content_truncation(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_content_truncation(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserNavigateTool
 
-        page = _make_mock_page()
-        page.inner_text.return_value = "x" * 6000
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._inner_text = "x" * 6000
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserNavigateTool()
-            result = tool.execute(url="https://example.com")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserNavigateTool()
+        result = tool.execute(url="https://example.com")
 
         assert result.success is True
         assert "[Content truncated]" in result.content
 
-    def test_execute_navigation_error(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_navigation_error(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserNavigateTool
 
-        page = _make_mock_page()
-        page.goto.side_effect = Exception("net::ERR_NAME_NOT_RESOLVED")
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._goto_error = Exception("net::ERR_NAME_NOT_RESOLVED")
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserNavigateTool()
-            result = tool.execute(url="https://nonexistent.example")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserNavigateTool()
+        result = tool.execute(url="https://nonexistent.example")
 
         assert result.success is False
         assert "Navigation error" in result.content
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_to_openai_function(self):
         from openjarvis.tools.browser import BrowserNavigateTool
 
@@ -250,6 +351,7 @@ class TestBrowserNavigateTool:
 
 
 class TestBrowserClickTool:
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_name_and_category(self):
         from openjarvis.tools.browser import BrowserClickTool
 
@@ -257,6 +359,7 @@ class TestBrowserClickTool:
         assert tool.spec.name == "browser_click"
         assert tool.spec.category == "browser"
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_requires_selector(self):
         from openjarvis.tools.browser import BrowserClickTool
 
@@ -264,18 +367,21 @@ class TestBrowserClickTool:
         assert "selector" in tool.spec.parameters["properties"]
         assert "selector" in tool.spec.parameters["required"]
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_has_by_text_parameter(self):
         from openjarvis.tools.browser import BrowserClickTool
 
         tool = BrowserClickTool()
         assert "by_text" in tool.spec.parameters["properties"]
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_tool_id(self):
         from openjarvis.tools.browser import BrowserClickTool
 
         tool = BrowserClickTool()
         assert tool.tool_id == "browser_click"
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_execute_no_selector(self):
         from openjarvis.tools.browser import BrowserClickTool
 
@@ -284,6 +390,7 @@ class TestBrowserClickTool:
         assert result.success is False
         assert "No selector" in result.content
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_execute_no_selector_param(self):
         from openjarvis.tools.browser import BrowserClickTool
 
@@ -292,61 +399,69 @@ class TestBrowserClickTool:
         assert result.success is False
         assert "No selector" in result.content
 
-    def test_execute_playwright_not_installed(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_playwright_not_installed(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserClickTool
 
-        session = _make_import_error_session()
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserClickTool()
-            result = tool.execute(selector="#btn")
+        session = ImportErrorBrowserSession()
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserClickTool()
+        result = tool.execute(selector="#btn")
         assert result.success is False
         assert "playwright not installed" in result.content
 
-    def test_execute_click_by_css(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_click_by_css(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserClickTool
 
-        page = _make_mock_page()
-        session = _make_mock_session(page)
+        page = FakePage()
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserClickTool()
-            result = tool.execute(selector="#submit-btn")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserClickTool()
+        result = tool.execute(selector="#submit-btn")
 
         assert result.success is True
         assert "Clicked element" in result.content
-        page.click.assert_called_once_with("#submit-btn")
+        assert page.click_calls == ["#submit-btn"]
         assert result.metadata["selector"] == "#submit-btn"
         assert result.metadata["by_text"] is False
 
-    def test_execute_click_by_text(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_click_by_text(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserClickTool
 
-        page = _make_mock_page()
-        session = _make_mock_session(page)
+        page = FakePage()
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserClickTool()
-            result = tool.execute(selector="Sign In", by_text=True)
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserClickTool()
+        result = tool.execute(selector="Sign In", by_text=True)
 
         assert result.success is True
-        page.get_by_text.assert_called_once_with("Sign In")
-        page.get_by_text.return_value.click.assert_called_once()
+        assert page.get_by_text_calls == ["Sign In"]
         assert result.metadata["by_text"] is True
 
-    def test_execute_click_error(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_click_error(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserClickTool
 
-        page = _make_mock_page()
-        page.click.side_effect = Exception("Element not found")
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._click_error = Exception("Element not found")
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserClickTool()
-            result = tool.execute(selector="#nonexistent")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserClickTool()
+        result = tool.execute(selector="#nonexistent")
 
         assert result.success is False
         assert "Click error" in result.content
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_to_openai_function(self):
         from openjarvis.tools.browser import BrowserClickTool
 
@@ -362,6 +477,7 @@ class TestBrowserClickTool:
 
 
 class TestBrowserTypeTool:
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_name_and_category(self):
         from openjarvis.tools.browser import BrowserTypeTool
 
@@ -369,6 +485,7 @@ class TestBrowserTypeTool:
         assert tool.spec.name == "browser_type"
         assert tool.spec.category == "browser"
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_requires_selector_and_text(self):
         from openjarvis.tools.browser import BrowserTypeTool
 
@@ -378,18 +495,21 @@ class TestBrowserTypeTool:
         assert "selector" in tool.spec.parameters["required"]
         assert "text" in tool.spec.parameters["required"]
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_has_clear_parameter(self):
         from openjarvis.tools.browser import BrowserTypeTool
 
         tool = BrowserTypeTool()
         assert "clear" in tool.spec.parameters["properties"]
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_tool_id(self):
         from openjarvis.tools.browser import BrowserTypeTool
 
         tool = BrowserTypeTool()
         assert tool.tool_id == "browser_type"
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_execute_no_selector(self):
         from openjarvis.tools.browser import BrowserTypeTool
 
@@ -398,6 +518,7 @@ class TestBrowserTypeTool:
         assert result.success is False
         assert "No selector" in result.content
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_execute_no_text(self):
         from openjarvis.tools.browser import BrowserTypeTool
 
@@ -406,6 +527,7 @@ class TestBrowserTypeTool:
         assert result.success is False
         assert "No text" in result.content
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_execute_no_params(self):
         from openjarvis.tools.browser import BrowserTypeTool
 
@@ -413,73 +535,84 @@ class TestBrowserTypeTool:
         result = tool.execute()
         assert result.success is False
 
-    def test_execute_playwright_not_installed(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_playwright_not_installed(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserTypeTool
 
-        session = _make_import_error_session()
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserTypeTool()
-            result = tool.execute(selector="#input", text="hello")
+        session = ImportErrorBrowserSession()
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserTypeTool()
+        result = tool.execute(selector="#input", text="hello")
         assert result.success is False
         assert "playwright not installed" in result.content
 
-    def test_execute_fill_clear_true(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_fill_clear_true(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserTypeTool
 
-        page = _make_mock_page()
-        session = _make_mock_session(page)
+        page = FakePage()
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserTypeTool()
-            result = tool.execute(selector="#search", text="query", clear=True)
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserTypeTool()
+        result = tool.execute(selector="#search", text="query", clear=True)
 
         assert result.success is True
-        page.fill.assert_called_once_with("#search", "query")
-        page.type.assert_not_called()
+        assert page.fill_calls == [("#search", "query")]
+        assert page.type_calls == []
         assert result.metadata["selector"] == "#search"
 
-    def test_execute_fill_default_clear(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_fill_default_clear(self, monkeypatch):
         """Default clear=True should use page.fill()."""
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserTypeTool
 
-        page = _make_mock_page()
-        session = _make_mock_session(page)
+        page = FakePage()
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserTypeTool()
-            result = tool.execute(selector="#search", text="query")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserTypeTool()
+        result = tool.execute(selector="#search", text="query")
 
         assert result.success is True
-        page.fill.assert_called_once_with("#search", "query")
+        assert page.fill_calls == [("#search", "query")]
 
-    def test_execute_type_clear_false(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_type_clear_false(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserTypeTool
 
-        page = _make_mock_page()
-        session = _make_mock_session(page)
+        page = FakePage()
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserTypeTool()
-            result = tool.execute(selector="#search", text="query", clear=False)
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserTypeTool()
+        result = tool.execute(selector="#search", text="query", clear=False)
 
         assert result.success is True
-        page.type.assert_called_once_with("#search", "query")
-        page.fill.assert_not_called()
+        assert page.type_calls == [("#search", "query")]
+        assert page.fill_calls == []
 
-    def test_execute_type_error(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_type_error(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserTypeTool
 
-        page = _make_mock_page()
-        page.fill.side_effect = Exception("Element not editable")
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._fill_error = Exception("Element not editable")
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserTypeTool()
-            result = tool.execute(selector="#readonly", text="hello")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserTypeTool()
+        result = tool.execute(selector="#readonly", text="hello")
 
         assert result.success is False
         assert "Type error" in result.content
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_to_openai_function(self):
         from openjarvis.tools.browser import BrowserTypeTool
 
@@ -495,6 +628,7 @@ class TestBrowserTypeTool:
 
 
 class TestBrowserScreenshotTool:
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_name_and_category(self):
         from openjarvis.tools.browser import BrowserScreenshotTool
 
@@ -502,6 +636,7 @@ class TestBrowserScreenshotTool:
         assert tool.spec.name == "browser_screenshot"
         assert tool.spec.category == "browser"
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_has_path_and_full_page(self):
         from openjarvis.tools.browser import BrowserScreenshotTool
 
@@ -510,75 +645,85 @@ class TestBrowserScreenshotTool:
         assert "path" in props
         assert "full_page" in props
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_no_required_params(self):
         from openjarvis.tools.browser import BrowserScreenshotTool
 
         tool = BrowserScreenshotTool()
         assert "required" not in tool.spec.parameters
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_tool_id(self):
         from openjarvis.tools.browser import BrowserScreenshotTool
 
         tool = BrowserScreenshotTool()
         assert tool.tool_id == "browser_screenshot"
 
-    def test_execute_playwright_not_installed(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_playwright_not_installed(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserScreenshotTool
 
-        session = _make_import_error_session()
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserScreenshotTool()
-            result = tool.execute()
+        session = ImportErrorBrowserSession()
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserScreenshotTool()
+        result = tool.execute()
         assert result.success is False
         assert "playwright not installed" in result.content
 
-    def test_execute_screenshot_basic(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_screenshot_basic(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserScreenshotTool
 
         fake_png = b"\x89PNG\x00screenshot-data"
-        page = _make_mock_page()
-        page.screenshot.return_value = fake_png
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._screenshot_data = fake_png
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserScreenshotTool()
-            result = tool.execute()
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserScreenshotTool()
+        result = tool.execute()
 
         assert result.success is True
         assert "Screenshot taken" in result.content
         assert "full page" not in result.content
         expected_b64 = base64.b64encode(fake_png).decode("utf-8")
         assert result.metadata["screenshot_base64"] == expected_b64
-        page.screenshot.assert_called_once_with(full_page=False)
+        assert page.screenshot_calls == [{"full_page": False}]
 
-    def test_execute_screenshot_full_page(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_screenshot_full_page(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserScreenshotTool
 
-        page = _make_mock_page()
-        page.screenshot.return_value = b"png-data"
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._screenshot_data = b"png-data"
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserScreenshotTool()
-            result = tool.execute(full_page=True)
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserScreenshotTool()
+        result = tool.execute(full_page=True)
 
         assert result.success is True
         assert "full page" in result.content
-        page.screenshot.assert_called_once_with(full_page=True)
+        assert page.screenshot_calls == [{"full_page": True}]
 
-    def test_execute_screenshot_save_to_file(self, tmp_path):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_screenshot_save_to_file(self, tmp_path, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserScreenshotTool
 
         fake_png = b"\x89PNGscreenshot"
-        page = _make_mock_page()
-        page.screenshot.return_value = fake_png
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._screenshot_data = fake_png
+        session = FakeBrowserSession(page)
 
         save_path = str(tmp_path / "test_screenshot.png")
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserScreenshotTool()
-            result = tool.execute(path=save_path)
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserScreenshotTool()
+        result = tool.execute(path=save_path)
 
         assert result.success is True
         assert save_path in result.content
@@ -586,20 +731,23 @@ class TestBrowserScreenshotTool:
         with open(save_path, "rb") as f:
             assert f.read() == fake_png
 
-    def test_execute_screenshot_error(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_screenshot_error(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserScreenshotTool
 
-        page = _make_mock_page()
-        page.screenshot.side_effect = Exception("Browser crashed")
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._screenshot_error = Exception("Browser crashed")
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserScreenshotTool()
-            result = tool.execute()
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserScreenshotTool()
+        result = tool.execute()
 
         assert result.success is False
         assert "Screenshot error" in result.content
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_to_openai_function(self):
         from openjarvis.tools.browser import BrowserScreenshotTool
 
@@ -615,6 +763,7 @@ class TestBrowserScreenshotTool:
 
 
 class TestBrowserExtractTool:
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_name_and_category(self):
         from openjarvis.tools.browser import BrowserExtractTool
 
@@ -622,6 +771,7 @@ class TestBrowserExtractTool:
         assert tool.spec.name == "browser_extract"
         assert tool.spec.category == "browser"
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_spec_has_selector_and_extract_type(self):
         from openjarvis.tools.browser import BrowserExtractTool
 
@@ -630,22 +780,26 @@ class TestBrowserExtractTool:
         assert "selector" in props
         assert "extract_type" in props
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_tool_id(self):
         from openjarvis.tools.browser import BrowserExtractTool
 
         tool = BrowserExtractTool()
         assert tool.tool_id == "browser_extract"
 
-    def test_execute_playwright_not_installed(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_playwright_not_installed(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserExtractTool
 
-        session = _make_import_error_session()
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserExtractTool()
-            result = tool.execute()
+        session = ImportErrorBrowserSession()
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserExtractTool()
+        result = tool.execute()
         assert result.success is False
         assert "playwright not installed" in result.content
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_execute_invalid_extract_type(self):
         from openjarvis.tools.browser import BrowserExtractTool
 
@@ -654,149 +808,168 @@ class TestBrowserExtractTool:
         assert result.success is False
         assert "Invalid extract_type" in result.content
 
-    def test_execute_extract_text(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_extract_text(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserExtractTool
 
-        page = _make_mock_page()
-        page.inner_text.return_value = "Page text content here"
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._inner_text = "Page text content here"
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserExtractTool()
-            result = tool.execute(extract_type="text")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserExtractTool()
+        result = tool.execute(extract_type="text")
 
         assert result.success is True
         assert result.content == "Page text content here"
-        page.inner_text.assert_called_with("body")
+        assert page.inner_text_calls == ["body"]
         assert result.metadata["extract_type"] == "text"
 
-    def test_execute_extract_text_custom_selector(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_extract_text_custom_selector(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserExtractTool
 
-        page = _make_mock_page()
-        page.inner_text.return_value = "Article content"
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._inner_text = "Article content"
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserExtractTool()
-            result = tool.execute(selector="#article", extract_type="text")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserExtractTool()
+        result = tool.execute(selector="#article", extract_type="text")
 
         assert result.success is True
-        page.inner_text.assert_called_with("#article")
+        assert page.inner_text_calls == ["#article"]
         assert result.metadata["selector"] == "#article"
 
-    def test_execute_extract_text_default(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_extract_text_default(self, monkeypatch):
         """Default extract_type should be 'text'."""
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserExtractTool
 
-        page = _make_mock_page()
-        page.inner_text.return_value = "Default text"
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._inner_text = "Default text"
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserExtractTool()
-            result = tool.execute()
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserExtractTool()
+        result = tool.execute()
 
         assert result.success is True
         assert result.content == "Default text"
 
-    def test_execute_extract_text_truncation(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_extract_text_truncation(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserExtractTool
 
-        page = _make_mock_page()
-        page.inner_text.return_value = "a" * 12000
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._inner_text = "a" * 12000
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserExtractTool()
-            result = tool.execute(extract_type="text")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserExtractTool()
+        result = tool.execute(extract_type="text")
 
         assert result.success is True
         assert "[Content truncated]" in result.content
         # Content should be truncated at 10000 + truncation notice
         assert len(result.content) < 11000
 
-    def test_execute_extract_links(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_extract_links(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserExtractTool
 
-        page = _make_mock_page()
-        page.eval_on_selector_all.return_value = [
+        page = FakePage()
+        page._eval_results = [
             {"href": "https://example.com/page1", "text": "Page 1"},
             {"href": "https://example.com/page2", "text": "Page 2"},
         ]
-        session = _make_mock_session(page)
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserExtractTool()
-            result = tool.execute(extract_type="links")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserExtractTool()
+        result = tool.execute(extract_type="links")
 
         assert result.success is True
         assert "[Page 1](https://example.com/page1)" in result.content
         assert "[Page 2](https://example.com/page2)" in result.content
         assert result.metadata["num_links"] == 2
 
-    def test_execute_extract_links_empty(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_extract_links_empty(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserExtractTool
 
-        page = _make_mock_page()
-        page.eval_on_selector_all.return_value = []
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._eval_results = []
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserExtractTool()
-            result = tool.execute(extract_type="links")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserExtractTool()
+        result = tool.execute(extract_type="links")
 
         assert result.success is True
         assert result.content == "No links found."
         assert result.metadata["num_links"] == 0
 
-    def test_execute_extract_tables(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_extract_tables(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserExtractTool
 
-        page = _make_mock_page()
-        page.eval_on_selector_all.return_value = [
+        page = FakePage()
+        page._eval_results = [
             "Name\tAge\nAlice\t30",
             "City\tCountry\nNYC\tUSA",
         ]
-        session = _make_mock_session(page)
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserExtractTool()
-            result = tool.execute(extract_type="tables")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserExtractTool()
+        result = tool.execute(extract_type="tables")
 
         assert result.success is True
         assert "Alice" in result.content
         assert "NYC" in result.content
         assert result.metadata["num_tables"] == 2
 
-    def test_execute_extract_tables_empty(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_extract_tables_empty(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserExtractTool
 
-        page = _make_mock_page()
-        page.eval_on_selector_all.return_value = []
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._eval_results = []
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserExtractTool()
-            result = tool.execute(extract_type="tables")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserExtractTool()
+        result = tool.execute(extract_type="tables")
 
         assert result.success is True
         assert result.content == "No tables found."
 
-    def test_execute_extract_error(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_execute_extract_error(self, monkeypatch):
+        import openjarvis.tools.browser as browser_mod
         from openjarvis.tools.browser import BrowserExtractTool
 
-        page = _make_mock_page()
-        page.inner_text.side_effect = Exception("Selector not found")
-        session = _make_mock_session(page)
+        page = FakePage()
+        page._inner_text_error = Exception("Selector not found")
+        session = FakeBrowserSession(page)
 
-        with patch("openjarvis.tools.browser._session", session):
-            tool = BrowserExtractTool()
-            result = tool.execute(selector="#missing", extract_type="text")
+        monkeypatch.setattr(browser_mod, "_session", session)
+        tool = BrowserExtractTool()
+        result = tool.execute(selector="#missing", extract_type="text")
 
         assert result.success is False
         assert "Extract error" in result.content
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_to_openai_function(self):
         from openjarvis.tools.browser import BrowserExtractTool
 
@@ -812,7 +985,13 @@ class TestBrowserExtractTool:
 
 
 class TestBrowserSession:
+    @pytest.mark.spec("REQ-tools.browser")
     def test_session_close_resets_state(self):
+        from unittest.mock import (
+            # MOCK-JUSTIFIED: Playwright lifecycle state reset
+            MagicMock,
+        )
+
         from openjarvis.tools.browser import _BrowserSession
 
         session = _BrowserSession()
@@ -826,6 +1005,7 @@ class TestBrowserSession:
         assert session._browser is None
         assert session._page is None
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_session_close_noop_when_not_initialized(self):
         from openjarvis.tools.browser import _BrowserSession
 
@@ -834,12 +1014,12 @@ class TestBrowserSession:
         session.close()
         assert session._playwright is None
 
-    def test_session_ensure_browser_import_error(self):
+    @pytest.mark.spec("REQ-tools.browser")
+    def test_session_ensure_browser_import_error(self, monkeypatch):
         from openjarvis.tools.browser import _BrowserSession
 
         session = _BrowserSession()
 
-        import builtins
         original_import = builtins.__import__
 
         def _mock_import(name, *args, **kwargs):
@@ -847,20 +1027,21 @@ class TestBrowserSession:
                 raise ImportError("No module named 'playwright'")
             return original_import(name, *args, **kwargs)
 
-        with patch.object(builtins, "__import__", side_effect=_mock_import):
-            with pytest.raises(ImportError, match="playwright not installed"):
-                session._ensure_browser()
+        monkeypatch.setattr(builtins, "__import__", _mock_import)
+        with pytest.raises(ImportError, match="playwright not installed"):
+            session._ensure_browser()
 
+    @pytest.mark.spec("REQ-tools.browser")
     def test_session_page_reuses_existing(self):
         from openjarvis.tools.browser import _BrowserSession
 
         session = _BrowserSession()
-        mock_page = MagicMock()
-        session._page = mock_page
+        fake_page = FakePage()
+        session._page = fake_page
 
         # _ensure_browser should not re-create if page exists
         session._ensure_browser()
-        assert session._page is mock_page
+        assert session._page is fake_page
 
 
 # ---------------------------------------------------------------------------
@@ -869,6 +1050,7 @@ class TestBrowserSession:
 
 
 class TestRegistryIntegration:
+    @pytest.mark.spec("REQ-tools.base.registration")
     def test_all_tools_registered(self):
         # Registration happens at import time via @ToolRegistry.register.
         # Other test modules may clear the registry, so re-register if needed.
@@ -897,6 +1079,7 @@ class TestRegistryIntegration:
         assert ToolRegistry.contains("browser_screenshot")
         assert ToolRegistry.contains("browser_extract")
 
+    @pytest.mark.spec("REQ-tools.base.registration")
     def test_module_exports(self):
         from openjarvis.tools.browser import __all__
 

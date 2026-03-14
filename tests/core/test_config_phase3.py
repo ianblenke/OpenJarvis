@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.core.config import (
     AgentConfig,
     HardwareInfo,
@@ -12,6 +14,7 @@ from openjarvis.core.config import (
 
 
 class TestAgentConfig:
+    @pytest.mark.spec("REQ-core.config.load-config")
     def test_defaults(self):
         cfg = AgentConfig()
         assert cfg.default_agent == "simple"
@@ -23,6 +26,7 @@ class TestAgentConfig:
         assert cfg.system_prompt_path == ""
         assert cfg.context_from_memory is True
 
+    @pytest.mark.spec("REQ-core.config.load-config")
     def test_custom_values(self):
         cfg = AgentConfig(
             default_agent="orchestrator",
@@ -50,11 +54,13 @@ class TestServerConfig:
 
 
 class TestJarvisConfig:
+    @pytest.mark.spec("REQ-core.config.load-config")
     def test_has_server(self):
         cfg = JarvisConfig()
         assert hasattr(cfg, "server")
         assert isinstance(cfg.server, ServerConfig)
 
+    @pytest.mark.spec("REQ-core.config.load-config")
     def test_agent_config_expanded(self):
         cfg = JarvisConfig()
         assert hasattr(cfg.agent, "default_tools")  # backward-compat property
@@ -65,12 +71,14 @@ class TestJarvisConfig:
 
 
 class TestGenerateDefaultToml:
+    @pytest.mark.spec("REQ-core.config.toml-generation")
     def test_includes_server_section(self):
         hw = HardwareInfo(cpu_brand="Test CPU", cpu_count=4, ram_gb=16.0)
         toml_str = generate_default_toml(hw)
         assert "[server]" in toml_str
         assert "port = 8000" in toml_str
 
+    @pytest.mark.spec("REQ-core.config.toml-generation")
     def test_includes_agent_section(self):
         hw = HardwareInfo()
         toml_str = generate_default_toml(hw)

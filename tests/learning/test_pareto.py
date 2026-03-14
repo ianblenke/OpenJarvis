@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+import pytest
+
 from openjarvis.evals.core.types import MetricStats, RunSummary
 from openjarvis.optimize.optimizer import compute_pareto_frontier
 from openjarvis.optimize.types import (
@@ -95,6 +97,7 @@ DEFAULT_OBJECTIVES = [
 class TestComputeParetoFrontier:
     """Tests for :func:`compute_pareto_frontier`."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_single_trial_is_on_frontier(self) -> None:
         """A single trial should always appear on the Pareto frontier."""
         trial = _make_trial("t1", accuracy=0.8, latency=1.5, cost=0.10)
@@ -103,6 +106,7 @@ class TestComputeParetoFrontier:
         assert len(frontier) == 1
         assert frontier[0].trial_id == "t1"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_dominated_trial_excluded(self) -> None:
         """Trial B is dominated by Trial A on every objective and should be excluded.
 
@@ -118,6 +122,7 @@ class TestComputeParetoFrontier:
         ids = {t.trial_id for t in frontier}
         assert ids == {"A"}
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_non_dominated_both_on_frontier(self) -> None:
         """Neither trial dominates the other so both belong on the frontier.
 
@@ -132,11 +137,13 @@ class TestComputeParetoFrontier:
         ids = {t.trial_id for t in frontier}
         assert ids == {"A", "B"}
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_empty_input(self) -> None:
         """An empty trial list should produce an empty frontier."""
         frontier = compute_pareto_frontier([], DEFAULT_OBJECTIVES)
         assert frontier == []
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_identical_trials(self) -> None:
         """Two trials with identical metrics: neither dominates the other.
 
@@ -151,6 +158,7 @@ class TestComputeParetoFrontier:
         ids = {t.trial_id for t in frontier}
         assert ids == {"A", "B"}
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_custom_objectives(self) -> None:
         """Custom objectives (maximize IPW, minimize energy) using RunSummary stats.
 
@@ -193,6 +201,7 @@ class TestComputeParetoFrontier:
         assert "B" in ids, "B should be on frontier (best energy)"
         assert "C" not in ids, "C is dominated by A (worse IPW AND worse energy)"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_energy_focused_frontier(self) -> None:
         """Accuracy vs energy tradeoff with the default + energy objectives.
 

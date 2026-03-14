@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from openjarvis.core.config import (
     HardwareInfo,
     JarvisConfig,
@@ -14,6 +16,7 @@ from openjarvis.core.config import (
 
 
 class TestLearningConfig:
+    @pytest.mark.spec("REQ-core.config.load-config")
     def test_defaults(self) -> None:
         cfg = LearningConfig()
         assert cfg.enabled is False
@@ -26,6 +29,7 @@ class TestLearningConfig:
         # Backward-compat properties
         assert cfg.default_policy == "heuristic"
 
+    @pytest.mark.spec("REQ-core.config.backward-compat")
     def test_backward_compat_custom_values(self) -> None:
         cfg = LearningConfig()
         cfg.default_policy = "grpo"
@@ -35,6 +39,7 @@ class TestLearningConfig:
         assert cfg.metrics.cost_weight == 0.3
         assert cfg.metrics.efficiency_weight == 0.3
 
+    @pytest.mark.spec("REQ-core.config.load-config")
     def test_jarvis_config_has_learning(self) -> None:
         cfg = JarvisConfig()
         assert hasattr(cfg, "learning")
@@ -42,6 +47,7 @@ class TestLearningConfig:
         assert cfg.learning.routing.policy == "heuristic"
         assert cfg.learning.default_policy == "heuristic"  # backward-compat
 
+    @pytest.mark.spec("REQ-core.config.load-config")
     def test_toml_loading_with_learning(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "config.toml"
         toml_file.write_text(
@@ -52,6 +58,7 @@ class TestLearningConfig:
         assert cfg.learning.routing.policy == "grpo"
         assert cfg.learning.metrics.latency_weight == 0.5
 
+    @pytest.mark.spec("REQ-core.config.load-config")
     def test_toml_loading_nested(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "config.toml"
         toml_file.write_text(
@@ -64,12 +71,14 @@ class TestLearningConfig:
         assert cfg.learning.routing.policy == "learned"
         assert cfg.learning.metrics.latency_weight == 0.5
 
+    @pytest.mark.spec("REQ-core.config.load-config")
     def test_toml_loading_without_learning(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "config.toml"
         toml_file.write_text("[engine]\n")
         cfg = load_config(toml_file)
         assert cfg.learning.routing.policy == "heuristic"
 
+    @pytest.mark.spec("REQ-core.config.toml-generation")
     def test_generate_default_toml_includes_learning(self) -> None:
         hw = HardwareInfo()
         toml_str = generate_default_toml(hw)

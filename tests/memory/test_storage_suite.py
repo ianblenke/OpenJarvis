@@ -67,6 +67,7 @@ def _make_backend(key, tmp_path):
 class TestStorageSuiteCore:
     """Storage operations that must pass for guaranteed-available backends."""
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_store_and_retrieve(self, backend_key, tmp_path):
         backend = _make_backend(backend_key, tmp_path)
         backend.store("Python is a programming language", source="wiki.md")
@@ -74,6 +75,7 @@ class TestStorageSuiteCore:
         assert len(results) >= 1
         assert "Python" in results[0].content
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_store_multiple_documents(self, backend_key, tmp_path):
         backend = _make_backend(backend_key, tmp_path)
         doc_ids = []
@@ -86,6 +88,7 @@ class TestStorageSuiteCore:
         assert len(doc_ids) == 10
         assert len(set(doc_ids)) == 10  # all unique
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_retrieve_respects_top_k(self, backend_key, tmp_path):
         backend = _make_backend(backend_key, tmp_path)
         for i in range(10):
@@ -93,6 +96,7 @@ class TestStorageSuiteCore:
         results = backend.retrieve("testing software", top_k=3)
         assert len(results) <= 3
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_delete_document(self, backend_key, tmp_path):
         if backend_key == "bm25":
             pytest.skip("Rust BM25Memory PyO3 bindings do not expose delete()")
@@ -101,6 +105,7 @@ class TestStorageSuiteCore:
         assert backend.delete(doc_id) is True
         assert backend.delete(doc_id) is False  # already deleted
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_clear_all(self, backend_key, tmp_path):
         if backend_key == "bm25":
             pytest.skip("Rust BM25Memory PyO3 bindings do not expose clear()")
@@ -111,6 +116,7 @@ class TestStorageSuiteCore:
         results = backend.retrieve("first")
         assert len(results) == 0
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_metadata_roundtrip(self, backend_key, tmp_path):
         backend = _make_backend(backend_key, tmp_path)
         meta = {"author": "test_user", "version": 2}
@@ -125,23 +131,27 @@ class TestStorageSuiteCore:
         assert results[0].metadata["author"] == "test_user"
         assert results[0].metadata["version"] == 2
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_empty_retrieve(self, backend_key, tmp_path):
         backend = _make_backend(backend_key, tmp_path)
         results = backend.retrieve("anything at all")
         assert results == []
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_store_returns_doc_id(self, backend_key, tmp_path):
         backend = _make_backend(backend_key, tmp_path)
         doc_id = backend.store("some content")
         assert isinstance(doc_id, str)
         assert len(doc_id) > 0
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_duplicate_content(self, backend_key, tmp_path):
         backend = _make_backend(backend_key, tmp_path)
         id1 = backend.store("identical content here")
         id2 = backend.store("identical content here")
         assert id1 != id2  # different IDs even for same content
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_large_document(self, backend_key, tmp_path):
         backend = _make_backend(backend_key, tmp_path)
         base = "This is a large test document about software engineering. "
@@ -162,6 +172,7 @@ class TestStorageSuiteCore:
 class TestStorageSuiteOptional:
     """Same core operations for backends that require optional dependencies."""
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_store_and_retrieve(self, backend_key, tmp_path):
         backend = _make_backend(backend_key, tmp_path)
         backend.store("Python is a programming language", source="wiki.md")
@@ -169,6 +180,7 @@ class TestStorageSuiteOptional:
         assert len(results) >= 1
         assert "Python" in results[0].content
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_delete_document(self, backend_key, tmp_path):
         if backend_key == "hybrid":
             pytest.skip(
@@ -179,6 +191,7 @@ class TestStorageSuiteOptional:
         assert backend.delete(doc_id) is True
         assert backend.delete(doc_id) is False
 
+    @pytest.mark.spec("REQ-storage.protocol.store")
     def test_clear_all(self, backend_key, tmp_path):
         if backend_key == "hybrid":
             pytest.skip(

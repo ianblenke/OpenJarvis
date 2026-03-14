@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from openjarvis.channels._stubs import ChannelStatus
@@ -20,6 +18,7 @@ def _register_webchat():
 
 
 class TestRegistration:
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_registry_key(self):
         assert ChannelRegistry.contains("webchat")
 
@@ -29,6 +28,7 @@ class TestRegistration:
 
 
 class TestInit:
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_defaults(self):
         ch = WebChatChannel()
         assert ch._messages == []
@@ -37,11 +37,13 @@ class TestInit:
 
 
 class TestSend:
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_send_success(self):
         ch = WebChatChannel()
         result = ch.send("user", "Hello!")
         assert result is True
 
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_send_publishes_event(self):
         bus = EventBus(record_history=True)
         ch = WebChatChannel(bus=bus)
@@ -50,6 +52,7 @@ class TestSend:
         event_types = [e.event_type for e in bus.history]
         assert EventType.CHANNEL_MESSAGE_SENT in event_types
 
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_get_messages(self):
         ch = WebChatChannel()
         ch.send("user1", "Hello!")
@@ -61,6 +64,7 @@ class TestSend:
         assert messages[1].content == "World!"
         assert messages[2].content == "Again!"
 
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_clear_messages(self):
         ch = WebChatChannel()
         ch.send("user1", "Hello!")
@@ -71,16 +75,19 @@ class TestSend:
 
 
 class TestListChannels:
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_list_channels(self):
         ch = WebChatChannel()
         assert ch.list_channels() == ["webchat"]
 
 
 class TestStatus:
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_disconnected_initially(self):
         ch = WebChatChannel()
         assert ch.status() == ChannelStatus.DISCONNECTED
 
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_connected_after_connect(self):
         ch = WebChatChannel()
         ch.connect()
@@ -88,14 +95,19 @@ class TestStatus:
 
 
 class TestOnMessage:
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_on_message(self):
         ch = WebChatChannel()
-        handler = MagicMock()
-        ch.on_message(handler)
-        assert handler in ch._handlers
+
+        def _handler(msg):
+            pass
+
+        ch.on_message(_handler)
+        assert _handler in ch._handlers
 
 
 class TestDisconnect:
+    @pytest.mark.spec("REQ-channels.webchat")
     def test_disconnect(self):
         ch = WebChatChannel()
         ch._status = ChannelStatus.CONNECTED

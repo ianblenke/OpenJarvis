@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.optimize.types import (
     OptimizationRun,
     SampleScore,
@@ -21,6 +23,7 @@ from openjarvis.recipes.loader import Recipe
 class TestSearchDimension:
     """Tests for SearchDimension dataclass."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_categorical_dimension(self) -> None:
         dim = SearchDimension(
             name="agent.type",
@@ -41,6 +44,7 @@ class TestSearchDimension:
         assert dim.low is None
         assert dim.high is None
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_continuous_dimension(self) -> None:
         dim = SearchDimension(
             name="intelligence.temperature",
@@ -55,6 +59,7 @@ class TestSearchDimension:
         assert dim.high == 1.0
         assert dim.values == []
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_integer_dimension(self) -> None:
         dim = SearchDimension(
             name="agent.max_turns",
@@ -67,6 +72,7 @@ class TestSearchDimension:
         assert dim.low == 1
         assert dim.high == 30
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_subset_dimension(self) -> None:
         dim = SearchDimension(
             name="tools.tool_set",
@@ -77,6 +83,7 @@ class TestSearchDimension:
         assert dim.dim_type == "subset"
         assert len(dim.values) == 3
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_text_dimension(self) -> None:
         dim = SearchDimension(
             name="intelligence.system_prompt",
@@ -89,6 +96,7 @@ class TestSearchDimension:
         assert dim.low is None
         assert dim.high is None
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_defaults(self) -> None:
         dim = SearchDimension(name="x", dim_type="categorical")
         assert dim.values == []
@@ -97,6 +105,7 @@ class TestSearchDimension:
         assert dim.description == ""
         assert dim.primitive == ""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_mutable_default_isolation(self) -> None:
         """Ensure mutable defaults are independent."""
         dim1 = SearchDimension(name="a", dim_type="categorical")
@@ -113,12 +122,14 @@ class TestSearchDimension:
 class TestSearchSpace:
     """Tests for SearchSpace dataclass."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_empty_search_space(self) -> None:
         space = SearchSpace()
         assert space.dimensions == []
         assert space.fixed == {}
         assert space.constraints == []
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_search_space_with_dimensions(self) -> None:
         dims = [
             SearchDimension(
@@ -142,6 +153,7 @@ class TestSearchSpace:
         assert space.fixed == {"engine": "ollama"}
         assert len(space.constraints) == 1
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_prompt_description_has_header(self) -> None:
         space = SearchSpace(
             dimensions=[
@@ -163,6 +175,7 @@ class TestSearchSpace:
         assert "simple" in desc
         assert "orchestrator" in desc
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_prompt_description_continuous(self) -> None:
         space = SearchSpace(
             dimensions=[
@@ -180,6 +193,7 @@ class TestSearchSpace:
         assert "0.0" in desc
         assert "1.0" in desc
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_prompt_description_text(self) -> None:
         space = SearchSpace(
             dimensions=[
@@ -193,6 +207,7 @@ class TestSearchSpace:
         desc = space.to_prompt_description()
         assert "Free-form text" in desc
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_prompt_description_fixed_params(self) -> None:
         space = SearchSpace(
             dimensions=[],
@@ -203,6 +218,7 @@ class TestSearchSpace:
         assert "engine = ollama" in desc
         assert "model = qwen3:8b" in desc
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_prompt_description_constraints(self) -> None:
         space = SearchSpace(
             dimensions=[],
@@ -216,6 +232,7 @@ class TestSearchSpace:
         assert "max_turns must be >= 1" in desc
         assert "temperature must be <= 1.0" in desc
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_prompt_description_groups_by_primitive(self) -> None:
         space = SearchSpace(
             dimensions=[
@@ -246,6 +263,7 @@ class TestSearchSpace:
         assert "## Agent" in desc
         assert "## Intelligence" in desc
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_mutable_default_isolation(self) -> None:
         s1 = SearchSpace()
         s2 = SearchSpace()
@@ -267,6 +285,7 @@ class TestSearchSpace:
 class TestTrialConfig:
     """Tests for TrialConfig dataclass."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_creation(self) -> None:
         tc = TrialConfig(
             trial_id="t1",
@@ -280,11 +299,13 @@ class TestTrialConfig:
         assert tc.params["agent.type"] == "orchestrator"
         assert tc.reasoning == "Higher temperature for creativity"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_defaults(self) -> None:
         tc = TrialConfig(trial_id="t0")
         assert tc.params == {}
         assert tc.reasoning == ""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_recipe_basic(self) -> None:
         tc = TrialConfig(
             trial_id="abc",
@@ -309,6 +330,7 @@ class TestTrialConfig:
         assert recipe.tools == ["calculator", "think"]
         assert recipe.routing_policy == "grpo"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_recipe_partial_params(self) -> None:
         tc = TrialConfig(
             trial_id="partial",
@@ -320,6 +342,7 @@ class TestTrialConfig:
         assert recipe.engine_key is None
         assert recipe.agent_type is None
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_recipe_unknown_params_ignored(self) -> None:
         tc = TrialConfig(
             trial_id="unk",
@@ -329,6 +352,7 @@ class TestTrialConfig:
         assert recipe.name == "trial-unk"
         # Unknown params should not cause an error
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_recipe_system_prompt(self) -> None:
         tc = TrialConfig(
             trial_id="sp",
@@ -339,6 +363,7 @@ class TestTrialConfig:
         recipe = tc.to_recipe()
         assert recipe.system_prompt == "You are a helpful assistant."
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_recipe_quantization(self) -> None:
         tc = TrialConfig(
             trial_id="q",
@@ -347,6 +372,7 @@ class TestTrialConfig:
         recipe = tc.to_recipe()
         assert recipe.quantization == "q4_K_M"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_to_recipe_agent_policy(self) -> None:
         tc = TrialConfig(
             trial_id="ap",
@@ -355,6 +381,7 @@ class TestTrialConfig:
         recipe = tc.to_recipe()
         assert recipe.agent_policy == "icl_updater"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_mutable_default_isolation(self) -> None:
         tc1 = TrialConfig(trial_id="a")
         tc2 = TrialConfig(trial_id="b")
@@ -370,6 +397,7 @@ class TestTrialConfig:
 class TestTrialResult:
     """Tests for TrialResult dataclass."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_creation_with_defaults(self) -> None:
         config = TrialConfig(trial_id="t1")
         result = TrialResult(trial_id="t1", config=config)
@@ -387,6 +415,7 @@ class TestTrialResult:
         assert result.sample_scores == []
         assert result.structured_feedback is None
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_creation_with_values(self) -> None:
         config = TrialConfig(
             trial_id="t2",
@@ -417,6 +446,7 @@ class TestTrialResult:
         assert result.failure_modes == ["timeout on long inputs"]
         assert len(result.per_sample_feedback) == 1
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_mutable_default_isolation(self) -> None:
         c1 = TrialConfig(trial_id="a")
         c2 = TrialConfig(trial_id="b")
@@ -436,6 +466,7 @@ class TestTrialResult:
 class TestOptimizationRun:
     """Tests for OptimizationRun dataclass."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_creation_defaults(self) -> None:
         space = SearchSpace()
         run = OptimizationRun(
@@ -453,6 +484,7 @@ class TestOptimizationRun:
         assert run.pareto_frontier == []
         assert len(run.objectives) == 3  # DEFAULT_OBJECTIVES
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_creation_with_values(self) -> None:
         space = SearchSpace()
         config = TrialConfig(
@@ -481,6 +513,7 @@ class TestOptimizationRun:
         assert run.optimizer_model == "gpt-5-mini"
         assert run.benchmark == "supergpqa"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_mutable_default_isolation(self) -> None:
         space = SearchSpace()
         r1 = OptimizationRun(run_id="a", search_space=space)
@@ -502,6 +535,7 @@ class TestOptimizationRun:
 class TestSampleScore:
     """Tests for SampleScore dataclass."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_creation(self) -> None:
         ss = SampleScore(
             record_id="r1",
@@ -514,6 +548,7 @@ class TestSampleScore:
         assert ss.score == 1.0
         assert ss.latency_seconds == 0.5
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_defaults(self) -> None:
         ss = SampleScore(record_id="r0")
         assert ss.record_id == "r0"
@@ -546,6 +581,7 @@ class TestSampleScore:
 class TestTrialFeedback:
     """Tests for TrialFeedback dataclass."""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_creation(self) -> None:
         fb = TrialFeedback(
             summary_text="Trial showed strong accuracy but high latency.",
@@ -560,6 +596,7 @@ class TestTrialFeedback:
         assert fb.suggested_changes == ["lower temperature", "increase max_turns"]
         assert fb.target_primitive == "agent"
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_defaults(self) -> None:
         fb = TrialFeedback()
         assert fb.summary_text == ""
@@ -568,6 +605,7 @@ class TestTrialFeedback:
         assert fb.suggested_changes == []
         assert fb.target_primitive == ""
 
+    @pytest.mark.spec("REQ-learning.optimizer-engine")
     def test_mutable_isolation(self) -> None:
         """Ensure mutable defaults are independent across instances."""
         fb1 = TrialFeedback()

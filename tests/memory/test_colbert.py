@@ -23,6 +23,7 @@ def _make_backend() -> ColBERTMemory:
 # -- registration -----------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.colbert")
 def test_registration():
     """Importing the module registers 'colbert' in MemoryRegistry."""
     MemoryRegistry.register_value("colbert", ColBERTMemory)
@@ -32,6 +33,7 @@ def test_registration():
 # -- store ------------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.colbert")
 def test_store_returns_id():
     backend = _make_backend()
     doc_id = backend.store("hello world")
@@ -42,6 +44,7 @@ def test_store_returns_id():
 # -- retrieve ---------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.colbert")
 def test_store_and_retrieve():
     backend = _make_backend()
     backend.store(
@@ -60,6 +63,7 @@ def test_store_and_retrieve():
 # -- MaxSim scoring ---------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.colbert")
 def test_maxsim_scoring():
     """Test the _maxsim function directly with synthetic tensors."""
     backend = _make_backend()
@@ -84,6 +88,7 @@ def test_maxsim_scoring():
 # -- top_k -----------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.colbert")
 def test_retrieve_top_k():
     backend = _make_backend()
     for i in range(10):
@@ -95,6 +100,7 @@ def test_retrieve_top_k():
 # -- delete -----------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.colbert")
 def test_delete():
     backend = _make_backend()
     doc_id = backend.store("deletable content")
@@ -103,6 +109,7 @@ def test_delete():
     assert backend.count() == 0
 
 
+@pytest.mark.spec("REQ-storage.colbert")
 def test_delete_nonexistent():
     backend = _make_backend()
     assert backend.delete("nonexistent_id") is False
@@ -111,6 +118,7 @@ def test_delete_nonexistent():
 # -- clear ------------------------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.colbert")
 def test_clear():
     backend = _make_backend()
     backend.store("doc one")
@@ -125,6 +133,7 @@ def test_clear():
 # -- event bus integration --------------------------------------------------
 
 
+@pytest.mark.spec("REQ-storage.colbert")
 def test_event_bus_store():
     bus = EventBus(record_history=True)
     backend = _make_backend()
@@ -145,6 +154,7 @@ def test_event_bus_store():
         mod.get_event_bus = original
 
 
+@pytest.mark.spec("REQ-storage.colbert")
 def test_event_bus_retrieve():
     bus = EventBus(record_history=True)
     backend = _make_backend()

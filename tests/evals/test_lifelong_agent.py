@@ -16,6 +16,8 @@ Covers:
 
 import json
 
+import pytest
+
 from openjarvis.evals.core.types import EvalRecord
 from openjarvis.evals.datasets.lifelong_agent import LifelongAgentDataset
 from openjarvis.evals.scorers.lifelong_agent_scorer import (
@@ -114,6 +116,7 @@ def _os_record():
 # ---------------------------------------------------------------------------
 
 class TestBuildDB:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_creates_table_with_rows(self) -> None:
         conn = build_db(_TABLE_INFO)
         rows = conn.execute("SELECT * FROM users").fetchall()
@@ -121,6 +124,7 @@ class TestBuildDB:
         assert rows[0] == (1, "Alice", 95.5)
         conn.close()
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_select_works(self) -> None:
         conn = build_db(_TABLE_INFO)
         rows = conn.execute("SELECT name FROM users WHERE score > 90").fetchall()
@@ -128,6 +132,7 @@ class TestBuildDB:
         assert "Alice" in names and "Carol" in names and "Bob" not in names
         conn.close()
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_insert_modifies_state(self) -> None:
         conn = build_db(_TABLE_INFO)
         conn.execute("INSERT INTO users VALUES (4, 'Dave', 88.0)")
@@ -135,6 +140,7 @@ class TestBuildDB:
         assert len(conn.execute("SELECT * FROM users").fetchall()) == 4
         conn.close()
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_empty_table_info(self) -> None:
         conn = build_db({"name": "empty", "column_info_list": [], "row_list": []})
         rows = conn.execute("SELECT * FROM empty").fetchall()
@@ -143,11 +149,13 @@ class TestBuildDB:
 
 
 class TestTableStateComparison:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_hash_consistent(self) -> None:
         rows1 = _get_table_rows(build_db(_TABLE_INFO), "users")
         rows2 = _get_table_rows(build_db(_TABLE_INFO), "users")
         assert _hash_table_state(rows1) == _hash_table_state(rows2)
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_hash_changes_after_insert(self) -> None:
         conn = build_db(_TABLE_INFO)
         rows_before = _get_table_rows(conn, "users")
@@ -157,12 +165,14 @@ class TestTableStateComparison:
         assert _hash_table_state(rows_before) != _hash_table_state(rows_after)
         conn.close()
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_direct_comparison_match(self) -> None:
         rows = _get_table_rows(build_db(_TABLE_INFO), "users")
         ok, detail = _compare_table_states(rows, rows)
         assert ok is True
         assert detail == "all_match"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_direct_comparison_row_count(self) -> None:
         rows = _get_table_rows(build_db(_TABLE_INFO), "users")
         ok, detail = _compare_table_states(rows, rows[:2])
@@ -175,22 +185,28 @@ class TestTableStateComparison:
 # ---------------------------------------------------------------------------
 
 class TestExtractSQL:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_action_operation_format(self) -> None:
         text = "Action: Operation\n```sql\nSELECT * FROM users;\n```"
         assert extract_sql(text) == "SELECT * FROM users;"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_code_block(self) -> None:
         assert extract_sql("```sql\nSELECT 1;\n```") == "SELECT 1;"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_bare_sql(self) -> None:
         assert "SELECT" in extract_sql("SELECT name FROM users")
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_operation_prefix(self) -> None:
         assert "SELECT" in extract_sql("Operation: SELECT * FROM users")
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_no_sql(self) -> None:
         assert extract_sql("I don't know") == ""
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_with_explanation(self) -> None:
         text = (
             "Let me write a SQL query.\n"
@@ -202,6 +218,7 @@ class TestExtractSQL:
         result = extract_sql(text)
         assert "SELECT name FROM users" in result
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_insert_statement(self) -> None:
         text = "INSERT INTO users VALUES (4, 'Dave', 88.0)"
         assert "INSERT" in extract_sql(text)
@@ -212,6 +229,7 @@ class TestExtractSQL:
 # ---------------------------------------------------------------------------
 
 class TestTextAnswerParsing:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_tuple_list(self) -> None:
         text = "Final Answer: [(1, 'Alice', 95.5), (2, 'Bob', 87.0)]"
         result = _parse_text_answer(text)
@@ -219,25 +237,30 @@ class TestTextAnswerParsing:
         assert len(result) == 2
         assert result[0][0] == 1
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_scalar_answer(self) -> None:
         text = "Final Answer: 42"
         result = _parse_text_answer(text)
         assert result == [[42]]
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_string_answer(self) -> None:
         text = "Final Answer: Alice"
         result = _parse_text_answer(text)
         assert result == [["Alice"]]
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_action_answer_format(self) -> None:
         text = "Action: Answer\nFinal Answer: [(3, 'Carol')]"
         result = _parse_text_answer(text)
         assert result is not None
         assert result[0] == [3, "Carol"]
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_no_final_answer(self) -> None:
         assert _parse_text_answer("I don't know") is None
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_comma_separated(self) -> None:
         text = "Final Answer: Alice, Bob, Carol"
         result = _parse_text_answer(text)
@@ -250,6 +273,7 @@ class TestTextAnswerParsing:
 # ---------------------------------------------------------------------------
 
 class TestScorerDBDirect:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_correct_sql(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(
@@ -259,6 +283,7 @@ class TestScorerDBDirect:
         assert ok is True
         assert meta["strategy"] == "sql_execution"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_correct_action_format(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(
@@ -269,6 +294,7 @@ class TestScorerDBDirect:
         )
         assert ok is True
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_filtered(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(
@@ -278,28 +304,33 @@ class TestScorerDBDirect:
         ok, _ = s.score(r, "SELECT * FROM users WHERE id = 1")
         assert ok is True
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_wrong(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(direct=[[1, "Alice", 95.5]])
         ok, meta = s.score(r, "SELECT * FROM users")  # 3 rows, expected 1
         assert ok is False
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_bad_sql(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(direct=[[1]])
         ok, meta = s.score(r, "SELECT * FROM nonexistent")
         assert ok is False
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_empty(self) -> None:
         ok, _ = LifelongAgentScorer().score(_db_record(direct=[[1]]), "")
         assert ok is False
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_no_sql_in_response(self) -> None:
         ok, meta = LifelongAgentScorer().score(
             _db_record(direct=[[1]]), "I don't know",
         )
         assert ok is False
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_text_answer_fallback(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(direct=[[1, "Alice", 95.5]])
@@ -309,6 +340,7 @@ class TestScorerDBDirect:
         assert ok is True
         assert meta["strategy"] == "text_answer_parsing"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_single_shot_warning_in_metadata(self) -> None:
         """Single-shot scoring should include degradation warning."""
         s = LifelongAgentScorer()
@@ -323,6 +355,7 @@ class TestScorerDBDirect:
 # ---------------------------------------------------------------------------
 
 class TestScorerDBMD5:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_correct_insert(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(md5="x", sql="INSERT INTO users VALUES (4, 'Dave', 88.0)")
@@ -330,24 +363,28 @@ class TestScorerDBMD5:
         assert ok is True
         assert meta["match_type"] == "md5_table_state"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_wrong_insert(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(md5="x", sql="INSERT INTO users VALUES (4, 'Dave', 88.0)")
         ok, _ = s.score(r, "INSERT INTO users VALUES (4, 'Eve', 99.0)")
         assert ok is False
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_correct_update(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(md5="x", sql="UPDATE users SET score = 100 WHERE id = 1")
         ok, _ = s.score(r, "UPDATE users SET score = 100 WHERE id = 1")
         assert ok is True
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_correct_delete(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(md5="x", sql="DELETE FROM users WHERE id = 3")
         ok, _ = s.score(r, "DELETE FROM users WHERE id = 3")
         assert ok is True
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_action_format(self) -> None:
         s = LifelongAgentScorer()
         r = _db_record(md5="x", sql="INSERT INTO users VALUES (4, 'Dave', 88.0)")
@@ -364,6 +401,7 @@ class TestScorerDBMD5:
 # ---------------------------------------------------------------------------
 
 class TestScorerKG:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_single_shot_unscorable(self) -> None:
         """KG tasks should be unscorable in single-shot mode."""
         s = LifelongAgentScorer()
@@ -373,6 +411,7 @@ class TestScorerKG:
         assert meta["scorable"] is False
         assert meta["match_type"] == "kg_unscorable_single_shot"
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_single_shot_returns_none(self) -> None:
         """Any KG single-shot scoring should return None, not False."""
         s = LifelongAgentScorer()
@@ -381,12 +420,14 @@ class TestScorerKG:
         assert ok is None
         assert meta["scorable"] is False
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_skills_propagated(self) -> None:
         s = LifelongAgentScorer()
         r = _kg_record(answer_list=["m.001"], skills=["get_neighbors"])
         _, meta = s.score(r, "Final Answer: m.001")
         assert meta["skills"] == ["get_neighbors"]
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_empty_response(self) -> None:
         s = LifelongAgentScorer()
         r = _kg_record(answer_list=["m.001"])
@@ -400,6 +441,7 @@ class TestScorerKG:
 # ---------------------------------------------------------------------------
 
 class TestScorerOS:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_returns_scorable_status(self) -> None:
         s = LifelongAgentScorer()
         ok, meta = s.score(_os_record(), "echo hello")
@@ -414,25 +456,31 @@ class TestScorerOS:
 # ---------------------------------------------------------------------------
 
 class TestExtractKGAnswers:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_entity_id(self) -> None:
         assert extract_kg_answers("Final Answer: m.02h8b9t") == ["m.02h8b9t"]
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_multiple(self) -> None:
         result = extract_kg_answers("Final Answer: m.001, m.002")
         assert set(result) == {"m.001", "m.002"}
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_g_prefix(self) -> None:
         result = extract_kg_answers("Final Answer: g.11b7n")
         assert result == ["g.11b7n"]
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_text_answer(self) -> None:
         result = extract_kg_answers("Final Answer: New York City")
         assert "New York City" in result
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_no_final_answer(self) -> None:
         result = extract_kg_answers("The answer is m.001")
         assert "m.001" in result
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_empty_text(self) -> None:
         assert extract_kg_answers("") == []
 
@@ -442,17 +490,20 @@ class TestExtractKGAnswers:
 # ---------------------------------------------------------------------------
 
 class TestExtractBashCommands:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_act_format(self) -> None:
         text = "Act: ```bash\nls -la /tmp\n```"
         cmds = _extract_bash_commands(text)
         assert len(cmds) == 1
         assert "ls -la" in cmds[0]
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_code_block(self) -> None:
         text = "```bash\ncat /etc/passwd\n```"
         cmds = _extract_bash_commands(text)
         assert len(cmds) == 1
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_multiple_commands(self) -> None:
         text = (
             "Act: ```bash\nmkdir /tmp/test\n```\n"
@@ -461,6 +512,7 @@ class TestExtractBashCommands:
         cmds = _extract_bash_commands(text)
         assert len(cmds) == 2
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_no_commands(self) -> None:
         assert _extract_bash_commands("I'm not sure") == []
 
@@ -470,39 +522,49 @@ class TestExtractBashCommands:
 # ---------------------------------------------------------------------------
 
 class TestValueComparison:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_int(self) -> None:
         assert values_match(42, 42)
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_float_tol(self) -> None:
         assert values_match(1.0, 1.0 + 1e-8)
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_float_too_far(self) -> None:
         assert not values_match(1.0, 1.1)
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_string(self) -> None:
         assert values_match("hello", "hello")
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_none(self) -> None:
         assert values_match(None, None)
         assert not values_match(None, 1)
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_cross_type(self) -> None:
         assert values_match(42, "42")
         assert values_match(5, 5.0)
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_string_whitespace(self) -> None:
         assert values_match(" hello ", "hello")
 
 
 class TestTupleComparison:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_match(self) -> None:
         ok, _ = compare_tuple_lists([[1, 2]], [[1, 2]])
         assert ok
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_row_mismatch(self) -> None:
         ok, d = compare_tuple_lists([[1], [2]], [[1]])
         assert not ok and "row_count" in d
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_col_mismatch(self) -> None:
         ok, d = compare_tuple_lists([[1, 2]], [[1]])
         assert not ok and "col_count" in d
@@ -513,6 +575,7 @@ class TestTupleComparison:
 # ---------------------------------------------------------------------------
 
 class TestEpisodeGrouping:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_single_subset_episode(self) -> None:
         ds = LifelongAgentDataset(subset="db_bench")
         ds._records = [
@@ -531,6 +594,7 @@ class TestEpisodeGrouping:
         indices = [r.metadata["sample_index"] for r in episodes[0]]
         assert indices == [1, 2, 3]
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_multi_subset_episodes(self) -> None:
         ds = LifelongAgentDataset(subset="all")
         ds._records = [
@@ -550,6 +614,7 @@ class TestEpisodeGrouping:
         episodes = list(ds.iter_episodes())
         assert len(episodes) == 2
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_episode_metadata_tags(self) -> None:
         ds = LifelongAgentDataset(subset="db_bench")
         ds._records = [
@@ -572,15 +637,18 @@ class TestEpisodeGrouping:
 # ---------------------------------------------------------------------------
 
 class TestDataset:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_instantiation_default(self) -> None:
         ds = LifelongAgentDataset()
         assert ds.dataset_id == "lifelong-agent"
         assert ds._subset == "all"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_instantiation_specific_subset(self) -> None:
         ds = LifelongAgentDataset(subset="db_bench")
         assert ds._subset == "db_bench"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_subset_validation(self) -> None:
         try:
             LifelongAgentDataset(subset="invalid")
@@ -588,11 +656,13 @@ class TestDataset:
         except ValueError:
             pass
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_all_subsets_accepted(self) -> None:
         for s in ("db_bench", "knowledge_graph", "os_interaction", "all"):
             ds = LifelongAgentDataset(subset=s)
             assert ds._subset == s
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_has_create_task_env(self) -> None:
         """Dataset should provide create_task_env for multi-turn eval."""
         ds = LifelongAgentDataset()
@@ -604,6 +674,7 @@ class TestDataset:
 # ---------------------------------------------------------------------------
 
 class TestDBEnvironment:
+    @pytest.mark.spec("REQ-evals.environments")
     def test_multi_turn_select(self) -> None:
         """DB environment should handle multi-turn SQL interaction."""
         from openjarvis.evals.environments.lifelong_agent_env import DBEnvironment
@@ -638,6 +709,7 @@ class TestDBEnvironment:
         assert meta["match_type"] == "interactive_db_direct"
         env.close()
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_multi_turn_insert(self) -> None:
         """DB environment should handle DML tasks."""
         from openjarvis.evals.environments.lifelong_agent_env import DBEnvironment
@@ -664,6 +736,7 @@ class TestDBEnvironment:
         assert ok is True
         env.close()
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_bad_sql_returns_error(self) -> None:
         from openjarvis.evals.environments.lifelong_agent_env import DBEnvironment
 
@@ -676,6 +749,7 @@ class TestDBEnvironment:
         assert not done
         env.close()
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_unparseable_response(self) -> None:
         from openjarvis.evals.environments.lifelong_agent_env import DBEnvironment
 
@@ -690,6 +764,7 @@ class TestDBEnvironment:
 
 
 class TestKGEnvironment:
+    @pytest.mark.spec("REQ-evals.environments")
     def test_multi_turn_with_oracle(self) -> None:
         """KG environment should simulate API calls from action_list."""
         from openjarvis.evals.environments.lifelong_agent_env import KGEnvironment
@@ -725,6 +800,7 @@ class TestKGEnvironment:
         assert meta["exact_match"] is True
         env.close()
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_multi_turn_with_dict_oracle(self) -> None:
         """KG environment should also handle dict-format action_list."""
         from openjarvis.evals.environments.lifelong_agent_env import KGEnvironment
@@ -748,6 +824,7 @@ class TestKGEnvironment:
         assert ok is True
         env.close()
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_wrong_answer(self) -> None:
         from openjarvis.evals.environments.lifelong_agent_env import KGEnvironment
 
@@ -761,6 +838,7 @@ class TestKGEnvironment:
         assert meta["f1"] == 0.0
         env.close()
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_invalid_api_call(self) -> None:
         from openjarvis.evals.environments.lifelong_agent_env import KGEnvironment
 
@@ -773,6 +851,7 @@ class TestKGEnvironment:
         assert not done
         env.close()
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_partial_f1(self) -> None:
         from openjarvis.evals.environments.lifelong_agent_env import KGEnvironment
 
@@ -790,6 +869,7 @@ class TestKGEnvironment:
 
 
 class TestOSEnvironment:
+    @pytest.mark.spec("REQ-evals.environments")
     def test_requires_docker(self) -> None:
         """OS environment should fail loudly without Docker."""
         import shutil
@@ -815,17 +895,20 @@ class TestOSEnvironment:
 # ---------------------------------------------------------------------------
 
 class TestCLI:
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_in_benchmarks(self) -> None:
         from openjarvis.evals.cli import BENCHMARKS
         assert "lifelong-agent" in BENCHMARKS
         assert BENCHMARKS["lifelong-agent"]["category"] == "agentic"
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_build_dataset(self) -> None:
         from openjarvis.evals.cli import _build_dataset
         ds = _build_dataset("lifelong-agent")
         assert ds.dataset_id == "lifelong-agent"
         assert hasattr(ds, "create_task_env")
 
+    @pytest.mark.spec("REQ-evals.datasets")
     def test_build_scorer(self) -> None:
         from openjarvis.evals.cli import _build_scorer
         s = _build_scorer("lifelong-agent", None, "test-model")
@@ -837,6 +920,7 @@ class TestCLI:
 # ---------------------------------------------------------------------------
 
 class TestRunnerEpisodeMode:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_episode_mode_field_exists(self) -> None:
         from openjarvis.evals.core.types import RunConfig
         config = RunConfig(
@@ -847,12 +931,14 @@ class TestRunnerEpisodeMode:
         )
         assert config.episode_mode is True
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_runner_has_episode_mode_method(self) -> None:
         from openjarvis.evals.core.runner import EvalRunner
         assert hasattr(EvalRunner, "_run_episode_mode")
         assert hasattr(EvalRunner, "_process_interactive")
         assert hasattr(EvalRunner, "_inject_examples")
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_inject_examples_empty(self) -> None:
         """With no examples, record should be returned unchanged."""
         from openjarvis.evals.core.runner import EvalRunner
@@ -867,6 +953,7 @@ class TestRunnerEpisodeMode:
         result = runner._inject_examples(record, [])
         assert result.problem == record.problem
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_inject_examples_adds_context(self) -> None:
         """With examples, record should have examples prepended."""
         from openjarvis.evals.core.runner import EvalRunner
@@ -883,6 +970,7 @@ class TestRunnerEpisodeMode:
         assert "What is 1+1?" in result.problem
         assert result.problem.endswith("What is 2+2?")
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_inject_examples_with_interaction_history(self) -> None:
         """With full interaction history, should include multi-turn exchanges."""
         from openjarvis.evals.core.runner import EvalRunner
@@ -909,6 +997,7 @@ class TestRunnerEpisodeMode:
         assert "Result: 2" in result.problem
         assert result.problem.endswith("What is 3+3?")
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_max_prior_examples_constant(self) -> None:
         """Runner should have a FIFO buffer size matching original default."""
         from openjarvis.evals.core.runner import EvalRunner
@@ -920,6 +1009,7 @@ class TestRunnerEpisodeMode:
 # ---------------------------------------------------------------------------
 
 class TestKGVariableReference:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_variable_ref_in_scorer(self) -> None:
         """Scorer should handle Final Answer: #N format."""
         # When a variable ref is given and entity IDs are elsewhere in text
@@ -930,11 +1020,13 @@ class TestKGVariableReference:
         )
         assert "m.02h8b9t" in result
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_variable_ref_no_entities(self) -> None:
         """Variable ref with no entity IDs should return the ref."""
         result = extract_kg_answers("Final Answer: #3")
         assert result == ["#_3"]
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_variable_ref_in_env(self) -> None:
         """KG environment should resolve variable references."""
         from openjarvis.evals.environments.lifelong_agent_env import KGEnvironment
@@ -959,6 +1051,7 @@ class TestKGVariableReference:
 
         env.close()
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_variable_ref_with_var_keyword(self) -> None:
         """Should handle 'Final Answer: Variable #2' format."""
         result = extract_kg_answers(
@@ -973,6 +1066,7 @@ class TestKGVariableReference:
 # ---------------------------------------------------------------------------
 
 class TestOSActionFormat:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_original_format_act_bash(self) -> None:
         """Should parse original format: Act: bash\\n```bash\\n...\\n```"""
         cmds = _extract_bash_commands(
@@ -981,6 +1075,7 @@ class TestOSActionFormat:
         assert len(cmds) == 1
         assert "ls -la" in cmds[0]
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_original_format_multiple(self) -> None:
         """Should parse multiple Act: bash blocks."""
         text = (
@@ -996,6 +1091,7 @@ class TestOSActionFormat:
 # ---------------------------------------------------------------------------
 
 class TestMaxTurns:
+    @pytest.mark.spec("REQ-evals.environments")
     def test_db_max_turns(self) -> None:
         from openjarvis.evals.environments.lifelong_agent_env import (
             MAX_TURNS_DB,
@@ -1005,6 +1101,7 @@ class TestMaxTurns:
         assert env.max_turns == MAX_TURNS_DB
         assert env.max_turns == 3
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_kg_max_turns(self) -> None:
         from openjarvis.evals.environments.lifelong_agent_env import (
             MAX_TURNS_KG,
@@ -1014,6 +1111,7 @@ class TestMaxTurns:
         assert env.max_turns == MAX_TURNS_KG
         assert env.max_turns == 15
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_os_max_turns(self) -> None:
         from openjarvis.evals.environments.lifelong_agent_env import (
             MAX_TURNS_OS,
@@ -1023,6 +1121,7 @@ class TestMaxTurns:
         assert env.max_turns == MAX_TURNS_OS
         assert env.max_turns == 5
 
+    @pytest.mark.spec("REQ-evals.environments")
     def test_base_default(self) -> None:
         from openjarvis.evals.environments.base import TaskEnvironment
         # Can't instantiate ABC, but verify the property exists
@@ -1034,11 +1133,13 @@ class TestMaxTurns:
 # ---------------------------------------------------------------------------
 
 class TestNumericTolerance:
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_abs_tol_near_zero(self) -> None:
         """abs_tol=1e-6 should make very small values match zero."""
         assert values_match(0, 1e-7)
         assert values_match(0.0, 5e-7)
 
+    @pytest.mark.spec("REQ-evals.scorers")
     def test_abs_tol_just_outside(self) -> None:
         """Values beyond abs_tol should not match."""
         assert not values_match(0, 1e-5)

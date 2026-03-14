@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import subprocess
-from unittest.mock import MagicMock, patch
+from typing import Any, Optional
 
 import pytest
 
-from openjarvis.agents._stubs import AgentResult, BaseAgent
+from openjarvis.agents._stubs import AgentContext, AgentResult, BaseAgent
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.sandbox.runner import (
     _OUTPUT_END,
@@ -16,6 +16,7 @@ from openjarvis.sandbox.runner import (
     ContainerRunner,
     SandboxedAgent,
 )
+from tests.fixtures.engines import FakeEngine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,6 +38,58 @@ def _mock_proc(
         stdout=stdout,
         stderr=stderr,
     )
+
+
+class StubAgent(BaseAgent):
+    """Minimal concrete BaseAgent for testing SandboxedAgent wrapping."""
+
+    agent_id = "stub"
+    accepts_tools = False
+
+    def __init__(
+        self,
+        engine: Any = None,
+        model: str = "test-model",
+        **kw: Any,
+    ) -> None:
+        _engine = engine or FakeEngine()
+        super().__init__(_engine, model, **kw)
+
+    def run(
+        self,
+        input: str,
+        context: Optional[AgentContext] = None,
+        **kwargs: Any,
+    ) -> AgentResult:
+        return AgentResult(content="stub result", turns=1)
+
+
+class FakeContainerRunner:
+    """Typed fake for ContainerRunner — avoids subprocess calls."""
+
+    def __init__(
+        self,
+        result: dict[str, Any] | None = None,
+    ) -> None:
+        self._result = result or {"content": "fake result"}
+        self.run_calls: list[dict[str, Any]] = []
+
+    def run(
+        self,
+        input_data: dict[str, Any],
+        *,
+        workspace: str = "",
+        mounts: list[str] | None = None,
+        secrets: dict[str, str] | None = None,
+        env: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        self.run_calls.append({
+            "input_data": input_data,
+            "workspace": workspace,
+            "mounts": mounts,
+            "secrets": secrets,
+        })
+        return self._result
 
 
 # ---------------------------------------------------------------------------
@@ -66,12 +119,14 @@ class TestContainerRunnerInit:
 
 
 class TestBuildDockerArgs:
-    def test_basic_args(self):
+    def test_basic_args(self, monkeypatch):
         runner = ContainerRunner()
-        with patch("shutil.which", return_value="/usr/bin/docker"):
-            args = runner._build_docker_args(
-                "test-container", [], None,
-            )
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: "/usr/bin/docker",
+        )
+        args = runner._build_docker_args(
+            "test-container", [], None,
+        )
         assert "/usr/bin/docker" in args
         assert "run" in args
         assert "--rm" in args
@@ -81,85 +136,120 @@ class TestBuildDockerArgs:
         assert "none" in args
         assert runner._image in args
 
-    def test_with_mounts(self):
+    def test_with_mounts(self, monkeypatch):
         runner = ContainerRunner()
-        with patch("shutil.which", return_value="/usr/bin/docker"):
-            args = runner._build_docker_args(
-                "test-container", ["/data/project"], None,
-            )
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: "/usr/bin/docker",
+        )
+        args = runner._build_docker_args(
+            "test-container", ["/data/project"], None,
+        )
         assert "-v" in args
         idx = args.index("-v")
         assert args[idx + 1] == "/data/project:/data/project:ro"
 
-    def test_with_env(self):
+    def test_with_env(self, monkeypatch):
         runner = ContainerRunner()
-        with patch("shutil.which", return_value="/usr/bin/docker"):
-            args = runner._build_docker_args(
-                "test-container", [], {"FOO": "bar"},
-            )
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: "/usr/bin/docker",
+        )
+        args = runner._build_docker_args(
+            "test-container", [], {"FOO": "bar"},
+        )
         assert "-e" in args
         idx = args.index("-e")
         assert args[idx + 1] == "FOO=bar"
 
 
 class TestContainerRunnerRun:
-    def test_successful_run(self):
+    @pytest.mark.spec("REQ-sandbox.runner.run")
+    def test_successful_run(self, monkeypatch):
         runner = ContainerRunner()
         output = _wrap_output({"content": "Hello!"})
-        with patch("shutil.which", return_value="/usr/bin/docker"), \
-             patch("subprocess.run", return_value=_mock_proc(
-                 stdout=output,
-             )):
-            result = runner.run({"prompt": "test"})
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: "/usr/bin/docker",
+        )
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: subprocess runs external container
+            "subprocess.run",
+            lambda *a, **kw: _mock_proc(stdout=output),
+        )
+        result = runner.run({"prompt": "test"})
         assert result["content"] == "Hello!"
 
-    def test_timeout(self):
+    def test_timeout(self, monkeypatch):
         runner = ContainerRunner(timeout=5)
-        with patch("shutil.which", return_value="/usr/bin/docker"), \
-             patch("subprocess.run", side_effect=subprocess.TimeoutExpired(
-                 cmd=["docker"], timeout=5,
-             )), \
-             patch.object(runner, "stop"):
-            result = runner.run({"prompt": "test"})
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: "/usr/bin/docker",
+        )
+
+        def _raise_timeout(*a, **kw):
+            raise subprocess.TimeoutExpired(cmd=["docker"], timeout=5)
+
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: subprocess runs external container
+            "subprocess.run", _raise_timeout,
+        )
+        # Also patch stop() to avoid subprocess calls during cleanup
+        monkeypatch.setattr(runner, "stop", lambda name: None)
+        result = runner.run({"prompt": "test"})
         assert result["error"] is True
         assert result["error_type"] == "timeout"
 
-    def test_nonzero_exit(self):
+    def test_nonzero_exit(self, monkeypatch):
         runner = ContainerRunner()
-        with patch("shutil.which", return_value="/usr/bin/docker"), \
-             patch("subprocess.run", return_value=_mock_proc(
-                 returncode=1, stderr="OOM killed",
-             )):
-            result = runner.run({"prompt": "test"})
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: "/usr/bin/docker",
+        )
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: subprocess runs external container
+            "subprocess.run",
+            lambda *a, **kw: _mock_proc(returncode=1, stderr="OOM killed"),
+        )
+        result = runner.run({"prompt": "test"})
         assert result["error"] is True
         assert "OOM killed" in result["content"]
 
-    def test_no_sentinel_output(self):
+    def test_no_sentinel_output(self, monkeypatch):
         runner = ContainerRunner()
-        with patch("shutil.which", return_value="/usr/bin/docker"), \
-             patch("subprocess.run", return_value=_mock_proc(
-                 stdout="plain text output",
-             )):
-            result = runner.run({"prompt": "test"})
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: "/usr/bin/docker",
+        )
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: subprocess runs external container
+            "subprocess.run",
+            lambda *a, **kw: _mock_proc(stdout="plain text output"),
+        )
+        result = runner.run({"prompt": "test"})
         assert result["content"] == "plain text output"
 
 
 class TestContainerRunnerRuntimeCheck:
-    def test_raises_when_runtime_not_found(self):
+    @pytest.mark.spec("REQ-sandbox.runner.stop")
+    def test_raises_when_runtime_not_found(self, monkeypatch):
         runner = ContainerRunner()
-        with patch("shutil.which", return_value=None):
-            with pytest.raises(RuntimeError, match="not found"):
-                runner._check_runtime()
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: None,
+        )
+        with pytest.raises(RuntimeError, match="not found"):
+            runner._check_runtime()
 
 
 class TestCleanupOrphans:
-    def test_cleanup_orphans(self):
+    @pytest.mark.spec("REQ-sandbox.runner.cleanup")
+    def test_cleanup_orphans(self, monkeypatch):
         runner = ContainerRunner()
-        with patch("shutil.which", return_value="/usr/bin/docker"), \
-             patch("subprocess.run") as mock_run:
-            mock_run.return_value = _mock_proc(stdout="abc123\ndef456")
-            runner.cleanup_orphans()
-        assert mock_run.call_count == 2  # ps + rm
+        call_log: list[list[str]] = []
+
+        def _fake_run(*args, **kwargs):
+            cmd = args[0] if args else kwargs.get("args", [])
+            call_log.append(cmd)
+            return _mock_proc(stdout="abc123\ndef456")
+
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: shutil.which probes filesystem
+            "shutil.which", lambda cmd: "/usr/bin/docker",
+        )
+        monkeypatch.setattr(  # MOCK-JUSTIFIED: subprocess runs external container
+            "subprocess.run", _fake_run,
+        )
+        runner.cleanup_orphans()
+        assert len(call_log) == 2  # ps + rm
 
 
 class TestContainerRunnerParseOutput:
@@ -184,6 +274,7 @@ class TestContainerRunnerParseOutput:
 
 
 class TestSandboxedAgentInit:
+    @pytest.mark.spec("REQ-sandbox.agent")
     def test_accepts_tools_false(self):
         assert SandboxedAgent.accepts_tools is False
 
@@ -191,15 +282,13 @@ class TestSandboxedAgentInit:
         assert SandboxedAgent.agent_id == "sandboxed"
 
     def test_wraps_agent(self):
-        inner = MagicMock(spec=BaseAgent)
-        inner.agent_id = "inner"
-        inner._engine = MagicMock()
-        inner._model = "test-model"
-        runner = MagicMock(spec=ContainerRunner)
+        engine = FakeEngine()
+        inner = StubAgent(engine=engine, model="test-model")
+        runner = FakeContainerRunner()
 
         agent = SandboxedAgent(
             inner, runner,
-            engine=inner._engine, model="test-model",
+            engine=engine, model="test-model",
         )
         assert agent._wrapped_agent is inner
         assert agent._runner is runner
@@ -207,17 +296,14 @@ class TestSandboxedAgentInit:
 
 class TestSandboxedAgentRun:
     def test_delegates_to_runner(self):
-        inner = MagicMock(spec=BaseAgent)
-        inner.agent_id = "test"
-        inner._model = "test-model"
-        runner = MagicMock(spec=ContainerRunner)
-        runner.run.return_value = {
+        engine = FakeEngine()
+        inner = StubAgent(engine=engine, model="test-model")
+        runner = FakeContainerRunner(result={
             "content": "sandbox result",
             "tool_results": [],
             "metadata": {},
-        }
+        })
 
-        engine = MagicMock()
         agent = SandboxedAgent(
             inner, runner, engine=engine, model="test-model",
         )
@@ -226,14 +312,12 @@ class TestSandboxedAgentRun:
         assert isinstance(result, AgentResult)
         assert result.content == "sandbox result"
         assert result.turns == 1
-        runner.run.assert_called_once()
+        assert len(runner.run_calls) == 1
 
     def test_parses_tool_results(self):
-        inner = MagicMock(spec=BaseAgent)
-        inner.agent_id = "test"
-        inner._model = "m"
-        runner = MagicMock(spec=ContainerRunner)
-        runner.run.return_value = {
+        engine = FakeEngine()
+        inner = StubAgent(engine=engine, model="m")
+        runner = FakeContainerRunner(result={
             "content": "done",
             "tool_results": [
                 {
@@ -242,9 +326,8 @@ class TestSandboxedAgentRun:
                     "success": True,
                 },
             ],
-        }
+        })
 
-        engine = MagicMock()
         agent = SandboxedAgent(
             inner, runner, engine=engine, model="m",
         )
@@ -255,14 +338,11 @@ class TestSandboxedAgentRun:
         assert result.tool_results[0].content == "42"
 
     def test_emits_events(self):
-        inner = MagicMock(spec=BaseAgent)
-        inner.agent_id = "test"
-        inner._model = "m"
-        runner = MagicMock(spec=ContainerRunner)
-        runner.run.return_value = {"content": "ok"}
+        engine = FakeEngine()
+        inner = StubAgent(engine=engine, model="m")
+        runner = FakeContainerRunner(result={"content": "ok"})
 
         bus = EventBus(record_history=True)
-        engine = MagicMock()
         agent = SandboxedAgent(
             inner, runner, engine=engine, model="m", bus=bus,
         )
@@ -271,3 +351,35 @@ class TestSandboxedAgentRun:
         types = [e.event_type for e in bus.history]
         assert EventType.AGENT_TURN_START in types
         assert EventType.AGENT_TURN_END in types
+
+
+# ---------------------------------------------------------------------------
+# Sandbox security tests
+# ---------------------------------------------------------------------------
+
+
+class TestSandboxSecuritySecrets:
+    @pytest.mark.spec("REQ-sandbox.security.secrets")
+    def test_runner_accepts_secrets(self):
+        """ContainerRunner.run() accepts a secrets parameter for injection."""
+        runner = FakeContainerRunner(result={"content": "ok"})
+        result = runner.run(
+            {"prompt": "test"},
+            secrets={"API_KEY": "sk-test"},
+        )
+        assert result["content"] == "ok"
+        assert runner.run_calls[0]["secrets"] == {"API_KEY": "sk-test"}
+
+
+class TestSandboxSecurityLimits:
+    @pytest.mark.spec("REQ-sandbox.security.limits")
+    def test_runner_has_timeout(self):
+        """ContainerRunner enforces timeout as a resource limit."""
+        runner = ContainerRunner(timeout=30)
+        assert runner._timeout == 30
+
+    @pytest.mark.spec("REQ-sandbox.security.limits")
+    def test_runner_has_max_concurrent(self):
+        """ContainerRunner limits concurrent containers."""
+        runner = ContainerRunner(max_concurrent=3)
+        assert runner._max_concurrent == 3

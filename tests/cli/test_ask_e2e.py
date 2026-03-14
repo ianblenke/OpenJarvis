@@ -5,8 +5,9 @@ from __future__ import annotations
 import importlib
 import json
 from pathlib import Path
-from unittest import mock
+from typing import Any, Dict, List
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.cli import cli
@@ -16,8 +17,8 @@ from openjarvis.core.config import JarvisConfig
 _ask_mod = importlib.import_module("openjarvis.cli.ask")
 
 
-def _mock_engine_response():
-    """Return a mock engine that generates a fixed response."""
+def _default_response():
+    """Return a default engine response dict."""
     return {
         "content": "The answer is 4.",
         "usage": {
@@ -30,10 +31,27 @@ def _mock_engine_response():
     }
 
 
+class _FakeEngine:
+    """Typed fake engine for ask CLI tests."""
+
+    def __init__(self, response: Dict[str, Any] | None = None) -> None:
+        self.engine_id = "mock"
+        self._response = response or _default_response()
+
+    def health(self) -> bool:
+        return True
+
+    def generate(self, messages, **kwargs) -> Dict[str, Any]:
+        return self._response
+
+    def list_models(self) -> List[str]:
+        return ["test-model"]
+
+
 def _patch_ask(
     monkeypatch, tmp_path, *, engine_result=None, no_engine=False
 ):
-    """Set up common mocks for ask tests."""
+    """Set up common patches for ask tests using typed fakes."""
     cfg = JarvisConfig()
     cfg.telemetry.db_path = str(tmp_path / "telemetry.db")
 
@@ -44,13 +62,7 @@ def _patch_ask(
             _ask_mod, "get_engine", lambda *a, **kw: None
         )
     else:
-        fake_engine = mock.MagicMock()
-        fake_engine.engine_id = "mock"
-        fake_engine.health.return_value = True
-        fake_engine.generate.return_value = (
-            engine_result or _mock_engine_response()
-        )
-        fake_engine.list_models.return_value = ["test-model"]
+        fake_engine = _FakeEngine(response=engine_result)
         monkeypatch.setattr(
             _ask_mod, "get_engine",
             lambda *a, **kw: ("mock", fake_engine),
@@ -66,6 +78,7 @@ def _patch_ask(
 
 
 class TestAskCommand:
+    @pytest.mark.spec("REQ-cli.ask")
     def test_basic_response(
         self, monkeypatch, tmp_path: Path
     ) -> None:
@@ -76,6 +89,7 @@ class TestAskCommand:
         assert result.exit_code == 0
         assert "The answer is 4" in result.output
 
+    @pytest.mark.spec("REQ-cli.ask")
     def test_no_engine_error(
         self, monkeypatch, tmp_path: Path
     ) -> None:
@@ -85,6 +99,7 @@ class TestAskCommand:
         )
         assert result.exit_code != 0
 
+    @pytest.mark.spec("REQ-cli.ask")
     def test_model_override(
         self, monkeypatch, tmp_path: Path
     ) -> None:
@@ -94,6 +109,7 @@ class TestAskCommand:
         )
         assert result.exit_code == 0
 
+    @pytest.mark.spec("REQ-cli.ask")
     def test_json_output(
         self, monkeypatch, tmp_path: Path
     ) -> None:
@@ -105,6 +121,7 @@ class TestAskCommand:
         data = json.loads(result.output)
         assert "content" in data
 
+    @pytest.mark.spec("REQ-cli.ask")
     def test_telemetry_recorded(
         self, monkeypatch, tmp_path: Path
     ) -> None:

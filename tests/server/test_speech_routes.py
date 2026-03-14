@@ -1,7 +1,5 @@
 """Tests for speech API endpoints."""
 
-from unittest.mock import MagicMock
-
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
@@ -11,29 +9,37 @@ from fastapi.testclient import TestClient  # noqa: E402
 from openjarvis.speech._stubs import TranscriptionResult  # noqa: E402
 
 
-@pytest.fixture
-def mock_speech_backend():
-    backend = MagicMock()
-    backend.backend_id = "mock"
-    backend.health.return_value = True
-    backend.transcribe.return_value = TranscriptionResult(
-        text="Hello world",
-        language="en",
-        confidence=0.95,
-        duration_seconds=1.5,
-        segments=[],
-    )
-    return backend
+class _FakeSpeechBackend:
+    """Typed fake speech backend implementing the protocol used by routes."""
+
+    backend_id = "mock"
+
+    def health(self) -> bool:
+        return True
+
+    def transcribe(self, audio_data: bytes, **kwargs) -> TranscriptionResult:
+        return TranscriptionResult(
+            text="Hello world",
+            language="en",
+            confidence=0.95,
+            duration_seconds=1.5,
+            segments=[],
+        )
 
 
 @pytest.fixture
-def app_with_speech(mock_speech_backend):
+def fake_speech_backend():
+    return _FakeSpeechBackend()
+
+
+@pytest.fixture
+def app_with_speech(fake_speech_backend):
     from fastapi import FastAPI
 
     from openjarvis.server.api_routes import speech_router
 
     app = FastAPI()
-    app.state.speech_backend = mock_speech_backend
+    app.state.speech_backend = fake_speech_backend
     app.include_router(speech_router)
     return app
 
@@ -43,7 +49,8 @@ def client(app_with_speech):
     return TestClient(app_with_speech)
 
 
-def test_transcribe_endpoint(client, mock_speech_backend):
+@pytest.mark.spec("REQ-server.routes.speech")
+def test_transcribe_endpoint(client, fake_speech_backend):
     response = client.post(
         "/v1/speech/transcribe",
         files={"file": ("test.wav", b"fake audio data", "audio/wav")},
@@ -56,11 +63,13 @@ def test_transcribe_endpoint(client, mock_speech_backend):
     assert data["duration_seconds"] == 1.5
 
 
+@pytest.mark.spec("REQ-server.routes.speech")
 def test_transcribe_no_file(client):
     response = client.post("/v1/speech/transcribe")
     assert response.status_code == 400 or response.status_code == 422
 
 
+@pytest.mark.spec("REQ-server.routes.speech")
 def test_health_endpoint(client):
     response = client.get("/v1/speech/health")
     assert response.status_code == 200
@@ -69,6 +78,7 @@ def test_health_endpoint(client):
     assert data["backend"] == "mock"
 
 
+@pytest.mark.spec("REQ-server.routes.speech")
 def test_health_no_backend():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

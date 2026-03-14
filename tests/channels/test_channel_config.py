@@ -5,6 +5,8 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from openjarvis.core.config import (
     ChannelConfig,
     DiscordChannelConfig,
@@ -17,12 +19,14 @@ from openjarvis.core.config import (
 
 
 class TestChannelConfig:
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_defaults(self):
         cfg = ChannelConfig()
         assert cfg.enabled is False
         assert cfg.default_channel == ""
         assert cfg.default_agent == "simple"
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_nested_defaults(self):
         cfg = ChannelConfig()
         assert isinstance(cfg.telegram, TelegramChannelConfig)
@@ -31,27 +35,32 @@ class TestChannelConfig:
         assert isinstance(cfg.webhook, WebhookChannelConfig)
         assert isinstance(cfg.email, EmailChannelConfig)
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_telegram_defaults(self):
         cfg = TelegramChannelConfig()
         assert cfg.bot_token == ""
         assert cfg.allowed_chat_ids == ""
         assert cfg.parse_mode == "Markdown"
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_discord_defaults(self):
         cfg = DiscordChannelConfig()
         assert cfg.bot_token == ""
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_slack_defaults(self):
         cfg = SlackChannelConfig()
         assert cfg.bot_token == ""
         assert cfg.app_token == ""
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_webhook_defaults(self):
         cfg = WebhookChannelConfig()
         assert cfg.url == ""
         assert cfg.secret == ""
         assert cfg.method == "POST"
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_email_defaults(self):
         cfg = EmailChannelConfig()
         assert cfg.smtp_host == ""
@@ -73,6 +82,7 @@ class TestTomlLoading:
         f.close()
         return Path(f.name)
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_load_channel_top_level(self):
         path = self._write_toml("""
 [channel]
@@ -86,6 +96,7 @@ default_channel = "telegram"
         finally:
             path.unlink()
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_load_channel_telegram(self):
         path = self._write_toml("""
 [channel]
@@ -103,6 +114,7 @@ parse_mode = "HTML"
         finally:
             path.unlink()
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_load_channel_discord(self):
         path = self._write_toml("""
 [channel.discord]
@@ -114,6 +126,7 @@ bot_token = "discord-token"
         finally:
             path.unlink()
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_load_channel_slack(self):
         path = self._write_toml("""
 [channel.slack]
@@ -127,6 +140,7 @@ app_token = "xapp-slack"
         finally:
             path.unlink()
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_load_channel_webhook(self):
         path = self._write_toml("""
 [channel.webhook]
@@ -142,6 +156,7 @@ method = "PUT"
         finally:
             path.unlink()
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_load_channel_email(self):
         path = self._write_toml("""
 [channel.email]
@@ -161,6 +176,7 @@ use_tls = false
         finally:
             path.unlink()
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_backward_compat_no_default_channel(self):
         """Old config without default_channel still works."""
         path = self._write_toml("""
@@ -174,6 +190,7 @@ enabled = false
         finally:
             path.unlink()
 
+    @pytest.mark.spec("REQ-channels.protocol.lifecycle")
     def test_multiple_channel_configs(self):
         path = self._write_toml("""
 [channel]

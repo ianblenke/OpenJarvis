@@ -54,6 +54,7 @@ def _openai_response(
 
 @pytest.mark.parametrize("model_id", NEW_MODELS)
 class TestVLLMGenerate:
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_generate_basic(self, respx_mock, model_id: str) -> None:
         engine = _make_engine()
         respx_mock.post(f"{VLLM_HOST}/v1/chat/completions").mock(
@@ -68,6 +69,7 @@ class TestVLLMGenerate:
         assert result["model"] == model_id
         assert result["usage"]["total_tokens"] == 15
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_generate_with_tools(self, respx_mock, model_id: str) -> None:
         engine = _make_engine()
         tool_calls = [
@@ -97,6 +99,7 @@ class TestVLLMGenerate:
         assert result["tool_calls"][0]["name"] == "calculator"
         assert result["tool_calls"][0]["id"] == "call_123"
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_generate_tool_fallback(self, respx_mock, model_id: str) -> None:
         """When tools cause a 400, engine retries without tools."""
         engine = _make_engine()
@@ -123,6 +126,7 @@ class TestVLLMGenerate:
         assert result["content"] == "Fallback reply"
         assert call_count == 2
 
+    @pytest.mark.spec("REQ-engine.protocol.stream")
     def test_generate_streaming(self, respx_mock, model_id: str) -> None:
         """SSE stream yields content tokens."""
         engine = _make_engine()
@@ -154,6 +158,7 @@ class TestVLLMGenerate:
 
 
 class TestVLLMModelDiscovery:
+    @pytest.mark.spec("REQ-engine.protocol.list-models")
     def test_list_models(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.get(f"{VLLM_HOST}/v1/models").mock(
@@ -165,6 +170,7 @@ class TestVLLMModelDiscovery:
         models = engine.list_models()
         assert models == NEW_MODELS
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_check_healthy(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.get(f"{VLLM_HOST}/v1/models").mock(
@@ -172,6 +178,7 @@ class TestVLLMModelDiscovery:
         )
         assert engine.health() is True
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_check_unhealthy(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.get(f"{VLLM_HOST}/v1/models").mock(
@@ -186,6 +193,7 @@ class TestVLLMModelDiscovery:
 
 
 class TestVLLMErrors:
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_connection_refused(self) -> None:
         """No mock — ConnectError raises EngineConnectionError."""
         engine = VLLMEngine(host="http://localhost:19999")
@@ -198,6 +206,7 @@ class TestVLLMErrors:
                     [Message(role=Role.USER, content="Hi")], model="qwen3:8b"
                 )
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_invalid_model_404(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.post(f"{VLLM_HOST}/v1/chat/completions").mock(
@@ -208,6 +217,7 @@ class TestVLLMErrors:
                 [Message(role=Role.USER, content="Hi")], model="nonexistent"
             )
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_timeout_raises_connection_error(self) -> None:
         engine = _make_engine()
         with respx.mock:

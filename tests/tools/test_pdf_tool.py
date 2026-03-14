@@ -4,12 +4,66 @@ from __future__ import annotations
 
 import builtins
 import sys
-from unittest.mock import MagicMock
+from typing import Any, List, Optional
+
+import pytest
 
 from openjarvis.tools.pdf_tool import PDFExtractTool, _parse_pages
 
+# ---------------------------------------------------------------------------
+# Typed fakes for pdfplumber
+# ---------------------------------------------------------------------------
+
+
+class FakePdfPage:
+    """Typed fake for a pdfplumber page object, replacing MagicMock."""
+
+    def __init__(self, text: str = "") -> None:
+        self._text = text
+
+    def extract_text(self) -> str:
+        return self._text
+
+
+class FakePdfDocument:
+    """Typed fake for pdfplumber.open() result (context manager)."""
+
+    def __init__(self, pages: Optional[List[FakePdfPage]] = None) -> None:
+        self.pages = pages or []
+
+    def __enter__(self) -> "FakePdfDocument":
+        return self
+
+    def __exit__(self, *args: Any) -> bool:
+        return False
+
+
+class FakePdfplumberModule:
+    """Typed fake for the pdfplumber module, replacing MagicMock module injection."""
+
+    def __init__(
+        self,
+        document: Optional[FakePdfDocument] = None,
+        error: Optional[Exception] = None,
+    ) -> None:
+        self._document = document
+        self._error = error
+
+    def open(self, path: str) -> FakePdfDocument:
+        if self._error is not None:
+            raise self._error
+        if self._document is None:
+            raise RuntimeError("No document configured")
+        return self._document
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
 
 class TestPDFExtractTool:
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_spec(self):
         tool = PDFExtractTool()
         assert tool.spec.name == "pdf_extract"
@@ -18,28 +72,33 @@ class TestPDFExtractTool:
         assert "file_path" in tool.spec.parameters["required"]
         assert tool.spec.required_capabilities == ["file:read"]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_tool_id(self):
         tool = PDFExtractTool()
         assert tool.tool_id == "pdf_extract"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_no_file_path(self):
         tool = PDFExtractTool()
         result = tool.execute(file_path="")
         assert result.success is False
         assert "No file_path" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_no_file_path_param(self):
         tool = PDFExtractTool()
         result = tool.execute()
         assert result.success is False
         assert "No file_path" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_file_not_found(self):
         tool = PDFExtractTool()
         result = tool.execute(file_path="/nonexistent/doc.pdf")
         assert result.success is False
         assert "File not found" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_not_a_pdf(self, tmp_path):
         f = tmp_path / "document.txt"
         f.write_text("not a pdf", encoding="utf-8")
@@ -48,6 +107,7 @@ class TestPDFExtractTool:
         assert result.success is False
         assert "Not a PDF" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_pdfplumber_not_installed(self, tmp_path, monkeypatch):
         f = tmp_path / "doc.pdf"
         f.write_bytes(b"%PDF-1.4 fake pdf content")
@@ -67,24 +127,17 @@ class TestPDFExtractTool:
         assert result.success is False
         assert "pdfplumber package not installed" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_successful_extraction(self, tmp_path, monkeypatch):
         f = tmp_path / "doc.pdf"
         f.write_bytes(b"%PDF-1.4 fake")
 
-        # Mock pdfplumber
-        mock_page1 = MagicMock()
-        mock_page1.extract_text.return_value = "Page one text."
-        mock_page2 = MagicMock()
-        mock_page2.extract_text.return_value = "Page two text."
-
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [mock_page1, mock_page2]
-        mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
-        mock_pdf.__exit__ = MagicMock(return_value=False)
-
-        mock_pdfplumber = MagicMock()
-        mock_pdfplumber.open.return_value = mock_pdf
-        monkeypatch.setitem(sys.modules, "pdfplumber", mock_pdfplumber)
+        doc = FakePdfDocument(pages=[
+            FakePdfPage(text="Page one text."),
+            FakePdfPage(text="Page two text."),
+        ])
+        fake_module = FakePdfplumberModule(document=doc)
+        monkeypatch.setitem(sys.modules, "pdfplumber", fake_module)
 
         tool = PDFExtractTool()
         result = tool.execute(file_path=str(f))
@@ -94,25 +147,18 @@ class TestPDFExtractTool:
         assert result.metadata["total_pages"] == 2
         assert result.metadata["pages_extracted"] == 2
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_extraction_with_page_range(self, tmp_path, monkeypatch):
         f = tmp_path / "doc.pdf"
         f.write_bytes(b"%PDF-1.4 fake")
 
-        mock_page1 = MagicMock()
-        mock_page1.extract_text.return_value = "First page."
-        mock_page2 = MagicMock()
-        mock_page2.extract_text.return_value = "Second page."
-        mock_page3 = MagicMock()
-        mock_page3.extract_text.return_value = "Third page."
-
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [mock_page1, mock_page2, mock_page3]
-        mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
-        mock_pdf.__exit__ = MagicMock(return_value=False)
-
-        mock_pdfplumber = MagicMock()
-        mock_pdfplumber.open.return_value = mock_pdf
-        monkeypatch.setitem(sys.modules, "pdfplumber", mock_pdfplumber)
+        doc = FakePdfDocument(pages=[
+            FakePdfPage(text="First page."),
+            FakePdfPage(text="Second page."),
+            FakePdfPage(text="Third page."),
+        ])
+        fake_module = FakePdfplumberModule(document=doc)
+        monkeypatch.setitem(sys.modules, "pdfplumber", fake_module)
 
         tool = PDFExtractTool()
         # Extract only pages 1 and 3 (1-indexed)
@@ -123,21 +169,16 @@ class TestPDFExtractTool:
         assert "Second page." not in result.content
         assert result.metadata["pages_extracted"] == 2
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_max_chars_truncation(self, tmp_path, monkeypatch):
         f = tmp_path / "doc.pdf"
         f.write_bytes(b"%PDF-1.4 fake")
 
-        mock_page = MagicMock()
-        mock_page.extract_text.return_value = "A" * 1000
-
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [mock_page]
-        mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
-        mock_pdf.__exit__ = MagicMock(return_value=False)
-
-        mock_pdfplumber = MagicMock()
-        mock_pdfplumber.open.return_value = mock_pdf
-        monkeypatch.setitem(sys.modules, "pdfplumber", mock_pdfplumber)
+        doc = FakePdfDocument(pages=[
+            FakePdfPage(text="A" * 1000),
+        ])
+        fake_module = FakePdfplumberModule(document=doc)
+        monkeypatch.setitem(sys.modules, "pdfplumber", fake_module)
 
         tool = PDFExtractTool()
         result = tool.execute(file_path=str(f), max_chars=100)
@@ -147,19 +188,20 @@ class TestPDFExtractTool:
         truncated_idx = result.content.index("\n\n[Content truncated]")
         assert truncated_idx == 100
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_pdf_extraction_error(self, tmp_path, monkeypatch):
         f = tmp_path / "bad.pdf"
         f.write_bytes(b"%PDF-1.4 corrupt")
 
-        mock_pdfplumber = MagicMock()
-        mock_pdfplumber.open.side_effect = RuntimeError("Corrupt PDF")
-        monkeypatch.setitem(sys.modules, "pdfplumber", mock_pdfplumber)
+        fake_module = FakePdfplumberModule(error=RuntimeError("Corrupt PDF"))
+        monkeypatch.setitem(sys.modules, "pdfplumber", fake_module)
 
         tool = PDFExtractTool()
         result = tool.execute(file_path=str(f))
         assert result.success is False
         assert "PDF extraction error" in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_to_openai_function(self):
         tool = PDFExtractTool()
         fn = tool.to_openai_function()
@@ -168,30 +210,57 @@ class TestPDFExtractTool:
 
 
 class TestParsePages:
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_single_page(self):
         assert _parse_pages("3", 10) == [2]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_range(self):
         assert _parse_pages("1-5", 10) == [0, 1, 2, 3, 4]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_comma_separated(self):
         assert _parse_pages("1,3,5", 10) == [0, 2, 4]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_mixed(self):
         result = _parse_pages("1-3,5", 10)
         assert result == [0, 1, 2, 4]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_out_of_range_clamped(self):
         # Page 20 is out of range for a 5-page doc
         assert _parse_pages("20", 5) == []
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_range_clamped_to_total(self):
         # "1-100" on a 3-page doc should only return 3 pages
         assert _parse_pages("1-100", 3) == [0, 1, 2]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_duplicates_removed(self):
         result = _parse_pages("1,1,2,2", 5)
         assert result == [0, 1]
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_empty_string(self):
         assert _parse_pages("", 5) == []
+
+
+class TestPDFExtractSensitiveFile:
+    @pytest.mark.spec("REQ-tools.base.protocol")
+    def test_sensitive_file_blocked(self, tmp_path, monkeypatch):
+        """Exercise line 115: is_sensitive_file returns True."""
+        f = tmp_path / "secrets.pdf"
+        f.write_bytes(b"%PDF-1.4 fake")
+
+        monkeypatch.setattr(
+            "openjarvis.security.file_policy.is_sensitive_file",
+            lambda path: True,
+        )
+
+        tool = PDFExtractTool()
+        result = tool.execute(file_path=str(f))
+        assert result.success is False
+        assert "Access denied" in result.content
+        assert "sensitive" in result.content.lower()

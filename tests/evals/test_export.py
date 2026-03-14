@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from openjarvis.evals.core.export import (
     _compute_efficiency,
     _compute_normalized,
@@ -40,6 +42,7 @@ def _make_traces(n=3):
 
 
 class TestExportJsonl:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_basic_export(self, tmp_path):
         traces = _make_traces()
         path = tmp_path / "traces.jsonl"
@@ -54,11 +57,13 @@ class TestExportJsonl:
             assert "query_id" in d
             assert "turns" in d
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_empty_traces(self, tmp_path):
         path = tmp_path / "empty.jsonl"
         export_jsonl([], path)
         assert path.read_text() == ""
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_creates_parent_dirs(self, tmp_path):
         path = tmp_path / "a" / "b" / "c" / "traces.jsonl"
         export_jsonl(_make_traces(1), path)
@@ -66,6 +71,7 @@ class TestExportJsonl:
 
 
 class TestExportSummaryJson:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_basic_summary(self, tmp_path):
         traces = _make_traces()
         path = tmp_path / "summary.json"
@@ -82,6 +88,7 @@ class TestExportSummaryJson:
         assert summary["config"]["model"] == "test"
         assert "statistics" in summary
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_statistics_keys(self, tmp_path):
         traces = _make_traces()
         path = tmp_path / "summary.json"
@@ -97,6 +104,7 @@ class TestExportSummaryJson:
         }
         assert set(stats.keys()) == expected_stat_keys
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_agg_stats_fields(self, tmp_path):
         traces = _make_traces()
         path = tmp_path / "summary.json"
@@ -109,6 +117,7 @@ class TestExportSummaryJson:
         assert "max" in wc_stats
         assert "std" in wc_stats
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_empty_traces(self, tmp_path):
         path = tmp_path / "summary.json"
         export_summary_json([], {}, path)
@@ -117,10 +126,12 @@ class TestExportSummaryJson:
 
 
 class TestExportArtifactsManifest:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_no_artifacts_dir(self, tmp_path):
         result = export_artifacts_manifest(tmp_path)
         assert result is None
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_with_artifacts(self, tmp_path):
         art_dir = tmp_path / "artifacts"
         q_dir = art_dir / "q0001_test"
@@ -139,6 +150,7 @@ class TestExportArtifactsManifest:
 
 
 class TestComputeEfficiency:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_with_resolved_traces(self):
         traces = _make_traces()
         result = _compute_efficiency(traces, 15.0, 3.0)
@@ -149,6 +161,7 @@ class TestComputeEfficiency:
         assert result["ipj"] is not None
         assert result["ipw"] is None  # no gpu power data on traces
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_no_scored_traces(self):
         traces = [
             QueryTrace(
@@ -160,12 +173,14 @@ class TestComputeEfficiency:
         assert result["accuracy"] is None
         assert result["ipj"] is None
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_no_energy(self):
         traces = _make_traces(1)
         result = _compute_efficiency(traces, None, None)
         assert result["total_gpu_energy_joules"] is None
         assert result["ipj"] is None
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_with_gpu_power(self):
         traces = [
             QueryTrace(
@@ -181,10 +196,12 @@ class TestComputeEfficiency:
 
 
 class TestComputeNormalized:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_too_few_traces(self):
         traces = _make_traces(3)
         assert _compute_normalized(traces) is None
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_with_enough_traces(self):
         traces = _make_traces(10)
         result = _compute_normalized(traces)
@@ -198,6 +215,7 @@ class TestComputeNormalized:
         assert "mbu_avg_pct" in norm_stats
         assert "accuracy" in norm_eff
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_large_set_trims_more(self):
         traces = _make_traces(40)
         result = _compute_normalized(traces)
@@ -207,6 +225,7 @@ class TestComputeNormalized:
 
 
 class TestExportSummaryJsonNewSections:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_totals_accuracy(self, tmp_path):
         traces = _make_traces()
         path = tmp_path / "summary.json"
@@ -215,6 +234,7 @@ class TestExportSummaryJsonNewSections:
         assert "accuracy" in summary["totals"]
         assert summary["totals"]["accuracy"] == 2 / 3
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_efficiency_section(self, tmp_path):
         traces = _make_traces()
         path = tmp_path / "summary.json"
@@ -227,6 +247,7 @@ class TestExportSummaryJsonNewSections:
         assert "ipj" in eff
         assert "ipw" in eff
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_mbu_avg_pct_in_statistics(self, tmp_path):
         traces = _make_traces()
         traces[0].query_mbu_avg_pct = 45.0
@@ -237,6 +258,7 @@ class TestExportSummaryJsonNewSections:
         mbu_stats = summary["statistics"]["mbu_avg_pct"]
         assert mbu_stats["avg"] == 50.0
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_normalized_present_for_enough_traces(self, tmp_path):
         traces = _make_traces(10)
         path = tmp_path / "summary.json"
@@ -245,6 +267,7 @@ class TestExportSummaryJsonNewSections:
         assert "normalized_statistics" in summary
         assert "normalized_efficiency" in summary
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_normalized_absent_for_few_traces(self, tmp_path):
         traces = _make_traces(3)
         path = tmp_path / "summary.json"
@@ -253,6 +276,7 @@ class TestExportSummaryJsonNewSections:
         assert "normalized_statistics" not in summary
         assert "normalized_efficiency" not in summary
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_bench_telemetry(self, tmp_path):
         traces = _make_traces()
         path = tmp_path / "summary.json"
@@ -262,6 +286,7 @@ class TestExportSummaryJsonNewSections:
         assert "bench_telemetry" in summary
         assert summary["bench_telemetry"]["total_energy_joules"] == 100.0
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_no_bench_telemetry_when_none(self, tmp_path):
         traces = _make_traces()
         path = tmp_path / "summary.json"
@@ -271,6 +296,7 @@ class TestExportSummaryJsonNewSections:
 
 
 class TestQueryTraceMbuRoundTrip:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_mbu_serialization(self):
         trace = QueryTrace(
             query_id="q0",
@@ -286,6 +312,7 @@ class TestQueryTraceMbuRoundTrip:
         assert restored.query_mbu_avg_pct == 42.5
         assert restored.query_mbu_max_pct == 87.3
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_mbu_none_by_default(self):
         trace = QueryTrace(query_id="q0", workload_type="test")
         d = trace.to_dict()
@@ -296,6 +323,7 @@ class TestQueryTraceMbuRoundTrip:
         assert restored.query_mbu_avg_pct is None
         assert restored.query_mbu_max_pct is None
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_mbu_in_hf_dataset_rows(self):
         trace = QueryTrace(
             query_id="q0",
@@ -310,6 +338,7 @@ class TestQueryTraceMbuRoundTrip:
 
 
 class TestActionEnergyBreakdown:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_turn_trace_round_trip(self):
         breakdown = [
             {
@@ -340,6 +369,7 @@ class TestActionEnergyBreakdown:
         action_type = restored.action_energy_breakdown[1]["action_type"]
         assert action_type == "tool_call:calculator"
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_turn_trace_none_by_default(self):
         turn = TurnTrace(turn_index=0)
         d = turn.to_dict()
@@ -348,6 +378,7 @@ class TestActionEnergyBreakdown:
         restored = TurnTrace.from_dict(d)
         assert restored.action_energy_breakdown is None
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_action_energy_summary_in_export(self, tmp_path):
         traces = []
         for i in range(2):
@@ -391,6 +422,7 @@ class TestActionEnergyBreakdown:
         assert "tool_call:search" in aes
         assert aes["tool_call:search"]["count"] == 2
 
+    @pytest.mark.spec("REQ-evals.runner")
     def test_no_action_energy_summary_when_empty(self, tmp_path):
         traces = _make_traces()
         path = tmp_path / "summary.json"
@@ -400,6 +432,7 @@ class TestActionEnergyBreakdown:
 
 
 class TestHardwareInfo:
+    @pytest.mark.spec("REQ-evals.runner")
     def test_hardware_info_in_summary(self, tmp_path):
         traces = _make_traces()
         path = tmp_path / "summary.json"

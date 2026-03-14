@@ -1,0 +1,34 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Python 3.10+ (primary), Rust (performance-critical), TypeScript/React (frontend)
+  Build: hatchling (Python), Cargo/maturin (Rust), Vite (frontend)
+  Testing: pytest + pytest-cov (Python), cargo test + tarpaulin (Rust), vitest (frontend)
+  Server: FastAPI + Uvicorn
+  Desktop: Tauri 2
+  Package manager: uv (Python), Cargo (Rust), npm (frontend)
+
+  Domain: OpenJarvis is a local-first personal AI framework for on-device AI agents
+  with local inference, energy-aware evaluations, and a learning loop.
+
+  Conventions:
+  - Spec-first: every feature must have a spec in openspec/specs/ before implementation
+  - Anti-mocking: never mock what you can use for real. Use typed fakes implementing
+    real protocols/interfaces instead of MagicMock. Only mock cross-process/network boundaries.
+  - 100% test coverage enforced via pre-commit hook and CI
+  - Tests use markers for hardware/cloud dependencies: @pytest.mark.live, .cloud, .nvidia, .amd, .apple, .slow
+  - Every test must reference a spec via @pytest.mark.spec("domain/requirement")
+
+rules:
+  proposal:
+    - Keep proposals under 500 words
+    - Always include a "Non-goals" section
+    - Reference which spec files will be affected
+  design:
+    - Include anti-mocking strategy for test approach
+    - Specify which typed fakes are needed
+    - Reference existing patterns in tests/fixtures/
+  tasks:
+    - Every task must include "write/update spec" and "write/update tests" subtasks
+    - Tests must be written before implementation (TDD)
+    - Break tasks into chunks of max 2 hours

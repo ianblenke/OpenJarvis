@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
+import openjarvis.core.config as _config_mod
 from openjarvis.core.config import (
     GpuInfo,
     HardwareInfo,
@@ -17,6 +16,19 @@ pytestmark = pytest.mark.amd
 
 
 # ---------------------------------------------------------------------------
+# Helpers: side-effect sequencer for _run_cmd
+# ---------------------------------------------------------------------------
+
+
+def _make_run_cmd_seq(outputs: list[str]):
+    """Return a callable that yields successive *outputs* on each call."""
+    it = iter(outputs)
+    def _run_cmd(*args, **kwargs):
+        return next(it)
+    return _run_cmd
+
+
+# ---------------------------------------------------------------------------
 # Detection / rocm-smi parsing
 # ---------------------------------------------------------------------------
 
@@ -24,66 +36,61 @@ pytestmark = pytest.mark.amd
 class TestAMDDetection:
     """Tests for _detect_amd_gpu() against various rocm-smi outputs."""
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/rocm-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        side_effect=[
-            "AMD Instinct MI300X",        # --showproductname
-            "GPU[0] : vram Total Memory (B): 206158430208",  # --showmeminfo vram
-            "GPU[0] : Some info",          # --showallinfo
-        ],
-    )
-    def test_rocm_smi_parsing(self, mock_run, mock_which):
+    def test_rocm_smi_parsing(self, monkeypatch):
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/rocm-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd", _make_run_cmd_seq([
+            "AMD Instinct MI300X",
+            "GPU[0] : vram Total Memory (B): 206158430208",
+            "GPU[0] : Some info",
+        ]))
         gpu = _detect_amd_gpu()
         assert gpu is not None
         assert gpu.vendor == "amd"
         assert "MI300X" in gpu.name
 
-    @patch("openjarvis.core.config.shutil.which", return_value=None)
-    def test_rocm_smi_not_found(self, mock_which):
+    def test_rocm_smi_not_found(self, monkeypatch):
+        monkeypatch.setattr("openjarvis.core.config.shutil.which", lambda _n: None)
         assert _detect_amd_gpu() is None
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/rocm-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        side_effect=[
-            "AMD Instinct MI250X\nAMD Instinct MI250X",  # --showproductname
-            "",   # --showmeminfo vram (empty)
-            "",   # --showallinfo (empty)
-        ],
-    )
-    def test_amd_gpu_model(self, mock_run, mock_which):
+    def test_amd_gpu_model(self, monkeypatch):
         """First line of rocm-smi output is used as the GPU name."""
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/rocm-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd", _make_run_cmd_seq([
+            "AMD Instinct MI250X\nAMD Instinct MI250X",
+            "",
+            "",
+        ]))
         gpu = _detect_amd_gpu()
         assert gpu is not None
         assert "MI250X" in gpu.name
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/rocm-smi")
-    @patch("openjarvis.core.config._run_cmd", side_effect=["", "", ""])
-    def test_rocm_smi_empty_output(self, mock_run, mock_which):
+    def test_rocm_smi_empty_output(self, monkeypatch):
         """Empty output from rocm-smi --showproductname returns None."""
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/rocm-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd", _make_run_cmd_seq(["", "", ""]))
         assert _detect_amd_gpu() is None
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/rocm-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        side_effect=[
+    def test_amd_vram_parsing(self, monkeypatch):
+        """VRAM is parsed from --showmeminfo vram output."""
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/rocm-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd", _make_run_cmd_seq([
             "AMD Instinct MI300X",
             "GPU[0] : vram Total Memory (B): 206158430208",
             "GPU[0] : Some info",
-        ],
-    )
-    def test_amd_vram_parsing(self, mock_run, mock_which):
-        """VRAM is parsed from --showmeminfo vram output."""
+        ]))
         gpu = _detect_amd_gpu()
         assert gpu is not None
-        # 206158430208 bytes = ~192.0 GB
         assert gpu.vram_gb == 192.0
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/rocm-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        side_effect=[
+    def test_amd_multi_gpu_count(self, monkeypatch):
+        """Multiple GPU entries in --showallinfo are counted."""
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/rocm-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd", _make_run_cmd_seq([
             "AMD Instinct MI300X",
             (
                 "GPU[0] : vram Total Memory (B): 206158430208\n"
@@ -101,25 +108,20 @@ class TestAMDDetection:
                 "GPU[2] : Info line\n"
                 "GPU[3] : Info line"
             ),
-        ],
-    )
-    def test_amd_multi_gpu_count(self, mock_run, mock_which):
-        """Multiple GPU entries in --showallinfo are counted."""
+        ]))
         gpu = _detect_amd_gpu()
         assert gpu is not None
         assert gpu.count == 4
 
-    @patch("openjarvis.core.config.shutil.which", return_value="/usr/bin/rocm-smi")
-    @patch(
-        "openjarvis.core.config._run_cmd",
-        side_effect=[
+    def test_amd_vram_parse_failure(self, monkeypatch):
+        """Garbled VRAM output falls back to 0.0."""
+        monkeypatch.setattr("openjarvis.core.config.shutil.which",
+                            lambda _n: "/usr/bin/rocm-smi")
+        monkeypatch.setattr(_config_mod, "_run_cmd", _make_run_cmd_seq([
             "AMD Instinct MI300X",
             "garbled output with no valid memory info",
             "GPU[0] : Some info",
-        ],
-    )
-    def test_amd_vram_parse_failure(self, mock_run, mock_which):
-        """Garbled VRAM output falls back to 0.0."""
+        ]))
         gpu = _detect_amd_gpu()
         assert gpu is not None
         assert gpu.vram_gb == 0.0

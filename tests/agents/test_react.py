@@ -7,19 +7,9 @@ and produces a working agent.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 from openjarvis.agents.native_react import NativeReActAgent
 from openjarvis.agents.react import ReActAgent
-
-
-def _engine_response(content):
-    return {
-        "content": content,
-        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-        "model": "test-model",
-        "finish_reason": "stop",
-    }
+from tests.fixtures.engines import FakeEngine
 
 
 class TestReActShim:
@@ -28,16 +18,14 @@ class TestReActShim:
         assert ReActAgent is NativeReActAgent
 
     def test_can_instantiate(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
+        engine = FakeEngine(engine_id="mock")
         agent = ReActAgent(engine, "test-model")
         assert agent.agent_id == "native_react"
 
     def test_can_run(self):
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.return_value = _engine_response(
-            "Thought: Simple.\nFinal Answer: Hello!"
+        engine = FakeEngine(
+            engine_id="mock",
+            responses=["Thought: Simple.\nFinal Answer: Hello!"],
         )
         agent = ReActAgent(engine, "test-model")
         result = agent.run("Hello")

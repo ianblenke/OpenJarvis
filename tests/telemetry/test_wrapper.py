@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, Dict, List
-from unittest import mock
+
+import pytest
 
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.types import Message, Role, TelemetryRecord
@@ -39,6 +40,7 @@ class _StubEngine(InferenceEngine):
 
 
 class TestInstrumentedGenerate:
+    @pytest.mark.spec("REQ-telemetry.instrumented-engine")
     def test_calls_engine(self) -> None:
         engine = _StubEngine()
         bus = EventBus()
@@ -50,6 +52,7 @@ class TestInstrumentedGenerate:
         )
         assert result["content"] == "Hello"
 
+    @pytest.mark.spec("REQ-telemetry.instrumented-engine")
     def test_publishes_inference_events(self) -> None:
         engine = _StubEngine()
         bus = EventBus(record_history=True)
@@ -63,6 +66,7 @@ class TestInstrumentedGenerate:
         assert EventType.INFERENCE_START in event_types
         assert EventType.INFERENCE_END in event_types
 
+    @pytest.mark.spec("REQ-telemetry.instrumented-engine")
     def test_publishes_telemetry_record(self) -> None:
         engine = _StubEngine()
         bus = EventBus(record_history=True)
@@ -81,6 +85,7 @@ class TestInstrumentedGenerate:
         assert isinstance(rec, TelemetryRecord)
         assert rec.model_id == "m"
 
+    @pytest.mark.spec("REQ-telemetry.instrumented-engine")
     def test_measures_latency(self) -> None:
         engine = _StubEngine()
         bus = EventBus(record_history=True)
@@ -97,9 +102,16 @@ class TestInstrumentedGenerate:
         rec = telem_events[0].data["record"]
         assert rec.latency_seconds >= 0
 
+    @pytest.mark.spec("REQ-telemetry.instrumented-engine")
     def test_passes_kwargs(self) -> None:
-        engine = _StubEngine()
-        engine.generate = mock.MagicMock(return_value={"content": "ok", "usage": {}})
+        captured_kwargs: dict = {}
+
+        class _CapturingEngine(_StubEngine):
+            def generate(self, messages, *, model, **kwargs):
+                captured_kwargs.update(kwargs)
+                return {"content": "ok", "usage": {}}
+
+        engine = _CapturingEngine()
         bus = EventBus()
         instrumented_generate(
             engine,
@@ -109,6 +121,5 @@ class TestInstrumentedGenerate:
             temperature=0.1,
             max_tokens=512,
         )
-        _, kwargs = engine.generate.call_args
-        assert kwargs["temperature"] == 0.1
-        assert kwargs["max_tokens"] == 512
+        assert captured_kwargs["temperature"] == 0.1
+        assert captured_kwargs["max_tokens"] == 512

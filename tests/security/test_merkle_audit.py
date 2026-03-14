@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from openjarvis.security.audit import AuditLogger
 from openjarvis.security.types import (
     ScanFinding,
@@ -37,6 +39,7 @@ def _make_event(
 
 
 class TestMerkleAudit:
+    @pytest.mark.spec("REQ-security.audit.merkle-chain")
     def test_log_creates_hash(self, tmp_path):
         db_path = tmp_path / "audit.db"
         logger = AuditLogger(db_path=db_path)
@@ -45,6 +48,7 @@ class TestMerkleAudit:
         assert logger.tail_hash() != ""
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.merkle-chain")
     def test_hash_chain_integrity(self, tmp_path):
         db_path = tmp_path / "audit.db"
         logger = AuditLogger(db_path=db_path)
@@ -55,6 +59,7 @@ class TestMerkleAudit:
         assert broken_at is None
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.merkle-chain")
     def test_prev_hash_links(self, tmp_path):
         db_path = tmp_path / "audit.db"
         logger = AuditLogger(db_path=db_path)
@@ -72,6 +77,7 @@ class TestMerkleAudit:
         assert valid
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.merkle-chain")
     def test_empty_chain_verifies(self, tmp_path):
         db_path = tmp_path / "audit.db"
         logger = AuditLogger(db_path=db_path)
@@ -80,12 +86,14 @@ class TestMerkleAudit:
         assert broken_at is None
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.merkle-chain")
     def test_tail_hash_empty_on_new_db(self, tmp_path):
         db_path = tmp_path / "audit.db"
         logger = AuditLogger(db_path=db_path)
         assert logger.tail_hash() == ""
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.merkle-chain")
     def test_count_includes_hashed_events(self, tmp_path):
         db_path = tmp_path / "audit.db"
         logger = AuditLogger(db_path=db_path)
@@ -94,6 +102,7 @@ class TestMerkleAudit:
         assert logger.count() == 2
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.merkle-chain")
     def test_query_returns_events(self, tmp_path):
         db_path = tmp_path / "audit.db"
         logger = AuditLogger(db_path=db_path)
@@ -103,6 +112,7 @@ class TestMerkleAudit:
         assert events[0].content_preview == "test query"
         logger.close()
 
+    @pytest.mark.spec("REQ-security.audit.merkle-chain")
     def test_schema_migration_idempotent(self, tmp_path):
         db_path = tmp_path / "audit.db"
         logger1 = AuditLogger(db_path=db_path)

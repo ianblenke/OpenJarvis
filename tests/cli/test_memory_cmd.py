@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.cli import cli
@@ -18,6 +19,7 @@ def _register_sqlite():
         MemoryRegistry.register_value("sqlite", SQLiteMemory)
 
 
+@pytest.mark.spec("REQ-cli.add")
 def test_memory_index_file(tmp_path: Path, monkeypatch):
     """Index a single text file and check success message."""
     _register_sqlite()
@@ -40,6 +42,7 @@ def test_memory_index_file(tmp_path: Path, monkeypatch):
     assert "Indexed" in result.output or "chunk" in result.output
 
 
+@pytest.mark.spec("REQ-cli.add")
 def test_memory_index_nonexistent(tmp_path: Path):
     """Indexing a nonexistent path should fail."""
     _register_sqlite()
@@ -49,6 +52,7 @@ def test_memory_index_nonexistent(tmp_path: Path):
     assert result.exit_code != 0
 
 
+@pytest.mark.spec("REQ-cli.add")
 def test_memory_search_returns_results(tmp_path: Path, monkeypatch):
     """Search returns results from pre-populated backend."""
     _register_sqlite()
@@ -73,6 +77,7 @@ def test_memory_search_returns_results(tmp_path: Path, monkeypatch):
     backend.close()
 
 
+@pytest.mark.spec("REQ-cli.add")
 def test_memory_search_no_results(tmp_path: Path, monkeypatch):
     """Search with no matches shows appropriate message."""
     _register_sqlite()
@@ -94,6 +99,7 @@ def test_memory_search_no_results(tmp_path: Path, monkeypatch):
     backend.close()
 
 
+@pytest.mark.spec("REQ-cli.add")
 def test_memory_stats_shows_count(tmp_path: Path, monkeypatch):
     """Stats command shows document count."""
     _register_sqlite()

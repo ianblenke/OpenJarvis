@@ -21,6 +21,7 @@ def server():
 
 
 class TestMCPServer:
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_initialize(self, server):
         req = MCPRequest(method="initialize", id=1)
         resp = server.handle(req)
@@ -32,12 +33,14 @@ class TestMCPServer:
         assert "serverInfo" in result
         assert result["serverInfo"]["name"] == "openjarvis"
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_initialize_capabilities(self, server):
         req = MCPRequest(method="initialize", id=1)
         resp = server.handle(req)
         caps = resp.result["capabilities"]
         assert "tools" in caps
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_list_all(self, server):
         req = MCPRequest(method="tools/list", id=2)
         resp = server.handle(req)
@@ -48,6 +51,7 @@ class TestMCPServer:
         assert "calculator" in names
         assert "think" in names
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_list_includes_spec(self, server):
         req = MCPRequest(method="tools/list", id=2)
         resp = server.handle(req)
@@ -57,6 +61,7 @@ class TestMCPServer:
             assert "description" in tool
             assert "inputSchema" in tool
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_list_input_schema_has_properties(self, server):
         req = MCPRequest(method="tools/list", id=2)
         resp = server.handle(req)
@@ -65,6 +70,7 @@ class TestMCPServer:
             schema = tool["inputSchema"]
             assert "properties" in schema
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_call_calculator(self, server):
         req = MCPRequest(
             method="tools/call",
@@ -79,6 +85,7 @@ class TestMCPServer:
         assert content[0]["type"] == "text"
         assert "4" in content[0]["text"]
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_call_calculator_complex(self, server):
         req = MCPRequest(
             method="tools/call",
@@ -89,6 +96,7 @@ class TestMCPServer:
         assert resp.error is None
         assert "27" in resp.result["content"][0]["text"]
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_call_think(self, server):
         req = MCPRequest(
             method="tools/call",
@@ -103,6 +111,7 @@ class TestMCPServer:
         assert resp.result["isError"] is False
         assert "Step 1" in resp.result["content"][0]["text"]
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_call_unknown_tool(self, server):
         req = MCPRequest(
             method="tools/call",
@@ -114,6 +123,7 @@ class TestMCPServer:
         assert resp.error["code"] == INVALID_PARAMS
         assert "Unknown tool" in resp.error["message"]
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_call_missing_name(self, server):
         req = MCPRequest(
             method="tools/call",
@@ -125,6 +135,7 @@ class TestMCPServer:
         assert resp.error["code"] == INVALID_PARAMS
         assert "name" in resp.error["message"]
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_call_invalid_arguments(self, server):
         req = MCPRequest(
             method="tools/call",
@@ -136,6 +147,7 @@ class TestMCPServer:
         assert resp.error is None
         assert resp.result["isError"] is True
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_result_format_mcp_compliant(self, server):
         req = MCPRequest(
             method="tools/call",
@@ -149,6 +161,7 @@ class TestMCPServer:
         assert isinstance(result["content"], list)
         assert result["content"][0]["type"] == "text"
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_unknown_method(self, server):
         req = MCPRequest(method="resources/list", id=10)
         resp = server.handle(req)
@@ -156,22 +169,26 @@ class TestMCPServer:
         assert resp.error["code"] == METHOD_NOT_FOUND
         assert "Unknown method" in resp.error["message"]
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_response_preserves_request_id(self, server):
         req = MCPRequest(method="tools/list", id=42)
         resp = server.handle(req)
         assert resp.id == 42
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_response_preserves_string_id(self, server):
         req = MCPRequest(method="tools/list", id="req-abc")
         resp = server.handle(req)
         assert resp.id == "req-abc"
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_empty_tools_server(self):
         empty_server = MCPServer([])
         req = MCPRequest(method="tools/list", id=1)
         resp = empty_server.handle(req)
         assert resp.result["tools"] == []
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_call_with_no_arguments_key(self, server):
         req = MCPRequest(
             method="tools/call",
@@ -182,6 +199,7 @@ class TestMCPServer:
         # Should still execute (with empty arguments)
         assert resp.error is None
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_calculator_division_by_zero_returns_inf(self, server):
         # Rust calculator (meval) returns inf for 1/0 rather than an error
         req = MCPRequest(

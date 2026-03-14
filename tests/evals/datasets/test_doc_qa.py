@@ -1,20 +1,25 @@
 """Tests for the doc_qa dataset."""
 
+import pytest
+
 from openjarvis.evals.datasets.doc_qa import DocQADataset
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_dataset_loads():
     ds = DocQADataset()
     ds.load(max_samples=5, seed=42)
     assert ds.size() == 5
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_dataset_full_size():
     ds = DocQADataset()
     ds.load()
     assert ds.size() == 30
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_record_structure():
     ds = DocQADataset()
     ds.load(max_samples=1, seed=42)
@@ -28,6 +33,7 @@ def test_record_structure():
     assert isinstance(record.metadata["required_facts"], list)
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_document_structure():
     ds = DocQADataset()
     ds.load(max_samples=1, seed=0)
@@ -37,6 +43,7 @@ def test_document_structure():
     assert "content" in doc
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_required_fact_structure():
     ds = DocQADataset()
     ds.load(max_samples=1, seed=0)
@@ -47,6 +54,7 @@ def test_required_fact_structure():
     assert isinstance(fact["source_doc_index"], int)
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_difficulty_tiers():
     ds = DocQADataset()
     ds.load()

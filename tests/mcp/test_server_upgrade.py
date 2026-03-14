@@ -16,9 +16,11 @@ def server():
 
 
 class TestProtocolVersion:
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_protocol_version_2025(self, server):
         assert server.PROTOCOL_VERSION == "2025-11-25"
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_initialize_returns_2025_version(self, server):
         req = MCPRequest(method="initialize", id=1)
         resp = server.handle(req)
@@ -26,6 +28,7 @@ class TestProtocolVersion:
 
 
 class TestServerTitle:
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_initialize_includes_title(self, server):
         req = MCPRequest(method="initialize", id=1)
         resp = server.handle(req)
@@ -35,6 +38,7 @@ class TestServerTitle:
 
 
 class TestListChanged:
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_tools_capability_list_changed_true(self, server):
         req = MCPRequest(method="initialize", id=1)
         resp = server.handle(req)
@@ -43,6 +47,7 @@ class TestListChanged:
 
 
 class TestAnnotations:
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_calculator_has_read_only_annotation(self, server):
         req = MCPRequest(method="tools/list", id=1)
         resp = server.handle(req)
@@ -52,6 +57,7 @@ class TestAnnotations:
         assert calc["annotations"]["readOnlyHint"] is True
         assert calc["annotations"]["destructiveHint"] is False
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_think_has_read_only_annotation(self, server):
         req = MCPRequest(method="tools/list", id=1)
         resp = server.handle(req)
@@ -62,6 +68,7 @@ class TestAnnotations:
 
 
 class TestAutoDiscovery:
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_auto_discover_creates_server(self):
         """MCPServer() with no tools arg should auto-discover."""
         server = MCPServer()
@@ -72,6 +79,7 @@ class TestAutoDiscovery:
         assert "calculator" in names
         assert "think" in names
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_auto_discover_includes_storage_tools(self):
         """Auto-discovered server should include storage tools."""
         server = MCPServer()
@@ -83,6 +91,7 @@ class TestAutoDiscovery:
         assert "memory_search" in names
         assert "memory_index" in names
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_auto_discover_tool_count(self):
         """Auto-discovered server should have all built-in tools."""
         server = MCPServer()
@@ -93,6 +102,7 @@ class TestAutoDiscovery:
         # llm, retrieval
         assert len(resp.result["tools"]) >= 8
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_explicit_tools_override_auto_discover(self):
         """Passing explicit tools should NOT auto-discover."""
         server = MCPServer([CalculatorTool()])
@@ -102,6 +112,7 @@ class TestAutoDiscovery:
         assert len(tools) == 1
         assert tools[0]["name"] == "calculator"
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_empty_list_means_no_tools(self):
         """Passing empty list should give empty tools (not auto-discover)."""
         server = MCPServer([])
@@ -111,6 +122,7 @@ class TestAutoDiscovery:
 
 
 class TestStorageToolAnnotations:
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_memory_store_destructive(self):
         from openjarvis.tools.storage_tools import MemoryStoreTool
 
@@ -121,6 +133,7 @@ class TestStorageToolAnnotations:
         assert tool["annotations"]["destructiveHint"] is True
         assert tool["annotations"]["readOnlyHint"] is False
 
+    @pytest.mark.spec("REQ-mcp.server.handler")
     def test_memory_retrieve_read_only(self):
         from openjarvis.tools.storage_tools import MemoryRetrieveTool
 

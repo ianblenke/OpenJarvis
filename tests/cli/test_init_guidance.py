@@ -2,29 +2,27 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
-from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.cli import cli
 from openjarvis.cli.init_cmd import _next_steps_text
 
+_init_mod = importlib.import_module("openjarvis.cli.init_cmd")
+
 
 class TestInitShowsNextSteps:
-    def test_init_shows_next_steps(self, tmp_path: Path) -> None:
+    @pytest.mark.spec("REQ-cli.init")
+    def test_init_shows_next_steps(self, monkeypatch, tmp_path: Path) -> None:
         """Init command prints next-steps panel after writing config."""
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
-        with (
-            mock.patch(
-                "openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir
-            ),
-            mock.patch(
-                "openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path
-            ),
-        ):
-            result = CliRunner().invoke(cli, ["init"])
+        monkeypatch.setattr(_init_mod, "DEFAULT_CONFIG_DIR", config_dir)
+        monkeypatch.setattr(_init_mod, "DEFAULT_CONFIG_PATH", config_path)
+        result = CliRunner().invoke(cli, ["init"])
         assert result.exit_code == 0
         assert "Getting Started" in result.output
         assert "jarvis ask" in result.output
@@ -32,6 +30,7 @@ class TestInitShowsNextSteps:
 
 
 class TestNextStepsOllama:
+    @pytest.mark.spec("REQ-cli.init")
     def test_next_steps_ollama(self) -> None:
         text = _next_steps_text("ollama")
         assert "ollama serve" in text
@@ -39,16 +38,19 @@ class TestNextStepsOllama:
         assert "jarvis ask" in text
         assert "jarvis doctor" in text
 
+    @pytest.mark.spec("REQ-cli.init")
     def test_next_steps_ollama_with_model(self) -> None:
         text = _next_steps_text("ollama", "qwen3.5:14b")
         assert "ollama pull qwen3.5:14b" in text
 
+    @pytest.mark.spec("REQ-cli.init")
     def test_next_steps_ollama_default_model(self) -> None:
         text = _next_steps_text("ollama")
         assert "ollama pull qwen3.5:3b" in text
 
 
 class TestNextStepsVllm:
+    @pytest.mark.spec("REQ-cli.init")
     def test_next_steps_vllm(self) -> None:
         text = _next_steps_text("vllm")
         assert "pip install vllm" in text
@@ -58,6 +60,7 @@ class TestNextStepsVllm:
 
 
 class TestNextStepsLlamacpp:
+    @pytest.mark.spec("REQ-cli.init")
     def test_next_steps_llamacpp(self) -> None:
         text = _next_steps_text("llamacpp")
         assert "brew install llama.cpp" in text
@@ -67,6 +70,7 @@ class TestNextStepsLlamacpp:
 
 
 class TestNextStepsMlx:
+    @pytest.mark.spec("REQ-cli.init")
     def test_next_steps_mlx(self) -> None:
         text = _next_steps_text("mlx")
         assert "pip install mlx-lm" in text
@@ -76,19 +80,16 @@ class TestNextStepsMlx:
 
 
 class TestMinimalConfig:
-    def test_init_generates_minimal_by_default(self, tmp_path: Path) -> None:
+    @pytest.mark.spec("REQ-cli.init")
+    def test_init_generates_minimal_by_default(
+        self, monkeypatch, tmp_path: Path,
+    ) -> None:
         """Default jarvis init produces a short config."""
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
-        with (
-            mock.patch(
-                "openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir
-            ),
-            mock.patch(
-                "openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path
-            ),
-        ):
-            result = CliRunner().invoke(cli, ["init"])
+        monkeypatch.setattr(_init_mod, "DEFAULT_CONFIG_DIR", config_dir)
+        monkeypatch.setattr(_init_mod, "DEFAULT_CONFIG_PATH", config_path)
+        result = CliRunner().invoke(cli, ["init"])
         assert result.exit_code == 0
         content = config_path.read_text()
         # Minimal config should be short
@@ -97,19 +98,16 @@ class TestMinimalConfig:
         # Should have the reference hint
         assert "jarvis init --full" in content
 
-    def test_init_full_generates_verbose_config(self, tmp_path: Path) -> None:
+    @pytest.mark.spec("REQ-cli.init")
+    def test_init_full_generates_verbose_config(
+        self, monkeypatch, tmp_path: Path,
+    ) -> None:
         """jarvis init --full produces the full reference config."""
         config_dir = tmp_path / ".openjarvis"
         config_path = config_dir / "config.toml"
-        with (
-            mock.patch(
-                "openjarvis.cli.init_cmd.DEFAULT_CONFIG_DIR", config_dir
-            ),
-            mock.patch(
-                "openjarvis.cli.init_cmd.DEFAULT_CONFIG_PATH", config_path
-            ),
-        ):
-            result = CliRunner().invoke(cli, ["init", "--full"])
+        monkeypatch.setattr(_init_mod, "DEFAULT_CONFIG_DIR", config_dir)
+        monkeypatch.setattr(_init_mod, "DEFAULT_CONFIG_PATH", config_path)
+        result = CliRunner().invoke(cli, ["init", "--full"])
         assert result.exit_code == 0
         content = config_path.read_text()
         # Full config should have many sections

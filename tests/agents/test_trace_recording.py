@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import pytest
 
 from openjarvis.agents._stubs import AgentResult
 from openjarvis.agents.executor import AgentExecutor
@@ -11,7 +11,8 @@ from openjarvis.core.events import EventBus, EventType
 from openjarvis.traces.store import TraceStore
 
 
-def test_executor_records_trace(tmp_path):
+@pytest.mark.spec("REQ-agents.executor.events")
+def test_executor_records_trace(tmp_path, monkeypatch):
     """execute_tick records a trace with steps to TraceStore."""
     mgr = AgentManager(str(tmp_path / "agents.db"))
     trace_store = TraceStore(str(tmp_path / "traces.db"))
@@ -34,8 +35,8 @@ def test_executor_records_trace(tmp_path):
         })
         return AgentResult(content="found it", metadata={"tokens_used": 100})
 
-    with patch.object(executor, "_invoke_agent", side_effect=fake_invoke):
-        executor.execute_tick(agent["id"])
+    monkeypatch.setattr(executor, "_invoke_agent", fake_invoke)
+    executor.execute_tick(agent["id"])
 
     traces = trace_store.list_traces(agent=agent["id"])
     assert len(traces) == 1
@@ -50,7 +51,8 @@ def test_executor_records_trace(tmp_path):
     trace_store.close()
 
 
-def test_executor_records_error_trace(tmp_path):
+@pytest.mark.spec("REQ-agents.executor.events")
+def test_executor_records_error_trace(tmp_path, monkeypatch):
     """execute_tick records an error trace on failure."""
     from openjarvis.agents.errors import FatalError
 
@@ -61,10 +63,11 @@ def test_executor_records_error_trace(tmp_path):
 
     agent = mgr.create_agent("error-trace")
 
-    with patch.object(
-        executor, "_invoke_agent", side_effect=FatalError("boom"),
-    ):
-        executor.execute_tick(agent["id"])
+    def _raise(agent_dict):
+        raise FatalError("boom")
+
+    monkeypatch.setattr(executor, "_invoke_agent", _raise)
+    executor.execute_tick(agent["id"])
 
     traces = trace_store.list_traces(agent=agent["id"])
     assert len(traces) == 1
@@ -74,7 +77,8 @@ def test_executor_records_error_trace(tmp_path):
     trace_store.close()
 
 
-def test_executor_no_trace_without_store(tmp_path):
+@pytest.mark.spec("REQ-agents.executor.tick")
+def test_executor_no_trace_without_store(tmp_path, monkeypatch):
     """Without trace_store, no error is raised."""
     mgr = AgentManager(str(tmp_path / "agents.db"))
     bus = EventBus()
@@ -85,8 +89,8 @@ def test_executor_no_trace_without_store(tmp_path):
     def fake_invoke(agent_dict):
         return AgentResult(content="done", metadata={})
 
-    with patch.object(executor, "_invoke_agent", side_effect=fake_invoke):
-        executor.execute_tick(agent["id"])
+    monkeypatch.setattr(executor, "_invoke_agent", fake_invoke)
+    executor.execute_tick(agent["id"])
 
     updated = mgr.get_agent(agent["id"])
     assert updated["status"] == "idle"

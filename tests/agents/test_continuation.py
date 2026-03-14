@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+import pytest
+
 from openjarvis.agents._stubs import AgentResult, BaseAgent
 
 
@@ -42,6 +44,7 @@ class ContinuationAgent(BaseAgent):
 
 
 class TestContinuation:
+    @pytest.mark.spec("REQ-agents.base.continuation")
     def test_no_continuation_needed(self):
         engine = MockEngine([
             {"content": "Hello world", "finish_reason": "stop"},
@@ -50,6 +53,7 @@ class TestContinuation:
         result = agent.run("Hi")
         assert result.content == "Hello world"
 
+    @pytest.mark.spec("REQ-agents.base.continuation")
     def test_single_continuation(self):
         engine = MockEngine([
             {"content": "Part 1...", "finish_reason": "length"},
@@ -59,6 +63,7 @@ class TestContinuation:
         result = agent.run("Hi")
         assert result.content == "Part 1... Part 2."
 
+    @pytest.mark.spec("REQ-agents.base.continuation")
     def test_multiple_continuations(self):
         engine = MockEngine([
             {"content": "A", "finish_reason": "length"},
@@ -69,6 +74,7 @@ class TestContinuation:
         result = agent.run("Hi")
         assert result.content == "ABC"
 
+    @pytest.mark.spec("REQ-agents.base.continuation")
     def test_max_continuations_respected(self):
         engine = MockEngine([
             {"content": "A", "finish_reason": "length"},
@@ -83,6 +89,7 @@ class TestContinuation:
         content = agent._check_continuation(result_dict, messages, max_continuations=2)
         assert content == "ABC"  # A + B + C, but not D
 
+    @pytest.mark.spec("REQ-agents.base.continuation")
     def test_empty_finish_reason(self):
         engine = MockEngine([
             {"content": "Done", "finish_reason": ""},

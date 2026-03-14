@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import tempfile
 
+import pytest
+
 from openjarvis.security.subprocess_sandbox import (
     build_safe_env,
     kill_process_tree,
@@ -17,6 +19,7 @@ from openjarvis.security.subprocess_sandbox import (
 
 
 class TestBuildSafeEnv:
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_only_safe_vars_included(self) -> None:
         env = build_safe_env()
         # All keys should be from the safe set
@@ -27,6 +30,7 @@ class TestBuildSafeEnv:
         for key in env:
             assert key in safe_keys
 
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_passthrough_works(self) -> None:
         os.environ["MY_CUSTOM_VAR_FOR_TEST"] = "hello"
         try:
@@ -35,11 +39,13 @@ class TestBuildSafeEnv:
         finally:
             del os.environ["MY_CUSTOM_VAR_FOR_TEST"]
 
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_extra_vars_added(self) -> None:
         env = build_safe_env(extra={"FOO": "bar", "BAZ": "qux"})
         assert env["FOO"] == "bar"
         assert env["BAZ"] == "qux"
 
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_unknown_env_var_excluded(self) -> None:
         os.environ["SUPER_SECRET_KEY_XYZ"] = "secret"
         try:
@@ -55,6 +61,7 @@ class TestBuildSafeEnv:
 
 
 class TestRunSandboxed:
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_simple_echo(self) -> None:
         result = run_sandboxed("echo hello", timeout=10.0)
         assert result.returncode == 0
@@ -62,18 +69,21 @@ class TestRunSandboxed:
         assert not result.timed_out
         assert not result.killed
 
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_timeout_kills_process(self) -> None:
         result = run_sandboxed("sleep 60", timeout=1.0)
         assert result.timed_out
         assert result.killed
         assert result.returncode == -1
 
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_working_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             result = run_sandboxed("pwd", working_dir=tmpdir, timeout=10.0)
             assert result.returncode == 0
             assert tmpdir in result.stdout.strip()
 
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_env_isolation(self) -> None:
         os.environ["TEST_SECRET"] = "super_secret_value"
         try:
@@ -85,6 +95,7 @@ class TestRunSandboxed:
         finally:
             del os.environ["TEST_SECRET"]
 
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_output_truncation(self) -> None:
         # Generate output larger than max_output_bytes
         result = run_sandboxed(
@@ -95,6 +106,7 @@ class TestRunSandboxed:
         assert result.returncode == 0
         assert len(result.stdout) <= 50
 
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_non_zero_exit_code(self) -> None:
         result = run_sandboxed("exit 42", timeout=10.0)
         assert result.returncode == 42
@@ -107,6 +119,7 @@ class TestRunSandboxed:
 
 
 class TestKillProcessTree:
+    @pytest.mark.spec("REQ-security.guardrails.wrapping")
     def test_no_crash_on_nonexistent_pid(self) -> None:
         # Should not raise on a PID that doesn't exist
         kill_process_tree(999999999)

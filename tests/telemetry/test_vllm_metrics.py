@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import pytest
 
 from openjarvis.telemetry.vllm_metrics import (
     VLLMMetrics,
@@ -48,6 +48,7 @@ vllm:num_requests_waiting 3
 
 
 class TestVLLMMetricsDataclass:
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_defaults(self):
         m = VLLMMetrics()
         assert m.ttft_p50 == 0.0
@@ -58,6 +59,7 @@ class TestVLLMMetricsDataclass:
         assert m.e2e_latency_p95 == 0.0
         assert m.queue_depth == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_custom_values(self):
         m = VLLMMetrics(ttft_p50=0.05, gpu_cache_usage_pct=0.8)
         assert m.ttft_p50 == 0.05
@@ -65,6 +67,7 @@ class TestVLLMMetricsDataclass:
 
 
 class TestParseHistogramBuckets:
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_parses_ttft_buckets(self):
         lines = SAMPLE_METRICS.splitlines()
         buckets, sum_val, count_val = _parse_histogram_buckets(
@@ -78,12 +81,14 @@ class TestParseHistogramBuckets:
         # Last finite bucket
         assert buckets[5] == (0.5, 100.0)
 
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_empty_lines(self):
         buckets, s, c = _parse_histogram_buckets([], "nonexistent")
         assert buckets == []
         assert s == 0.0
         assert c == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_no_matching_metric(self):
         lines = SAMPLE_METRICS.splitlines()
         buckets, s, c = _parse_histogram_buckets(lines, "no_such_metric")
@@ -92,13 +97,16 @@ class TestParseHistogramBuckets:
 
 
 class TestPercentileFromBuckets:
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_empty_buckets(self):
         assert _percentile_from_buckets([], 50) == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_zero_count(self):
         buckets = [(0.1, 0.0), (0.5, 0.0)]
         assert _percentile_from_buckets(buckets, 50) == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_median_interpolation(self):
         lines = SAMPLE_METRICS.splitlines()
         buckets, _, _ = _parse_histogram_buckets(
@@ -111,6 +119,7 @@ class TestPercentileFromBuckets:
         # result = 0.05 + 0.25 * (0.1-0.05) = 0.0625
         assert abs(p50 - 0.0625) < 1e-6
 
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_p95(self):
         lines = SAMPLE_METRICS.splitlines()
         buckets, _, _ = _parse_histogram_buckets(
@@ -125,16 +134,19 @@ class TestPercentileFromBuckets:
 
 
 class TestParseGauge:
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_parses_gauge(self):
         lines = SAMPLE_METRICS.splitlines()
         val = _parse_gauge(lines, "vllm:gpu_cache_usage_perc")
         assert val == 0.42
 
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_missing_gauge(self):
         lines = SAMPLE_METRICS.splitlines()
         val = _parse_gauge(lines, "nonexistent_gauge")
         assert val == 0.0
 
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_queue_depth(self):
         lines = SAMPLE_METRICS.splitlines()
         val = _parse_gauge(lines, "vllm:num_requests_waiting")
@@ -142,6 +154,7 @@ class TestParseGauge:
 
 
 class TestVLLMMetricsScraper:
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_parse_full_metrics(self):
         scraper = VLLMMetricsScraper("http://localhost:8000")
         metrics = scraper._parse(SAMPLE_METRICS)
@@ -154,13 +167,15 @@ class TestVLLMMetricsScraper:
         assert metrics.e2e_latency_p50 > 0
         assert metrics.e2e_latency_p95 > 0
 
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_scrape_connection_error(self):
         scraper = VLLMMetricsScraper("http://localhost:99999")
         metrics = scraper.scrape()
         # Should return zeroed metrics, not raise
         assert metrics == VLLMMetrics()
 
-    def test_scrape_success_with_mock(self):
+    @pytest.mark.spec("REQ-telemetry.vllm")
+    def test_scrape_success_with_fake(self, monkeypatch):
         scraper = VLLMMetricsScraper("http://localhost:8000")
 
         class FakeResp:
@@ -169,15 +184,16 @@ class TestVLLMMetricsScraper:
             def raise_for_status(self):
                 pass
 
-        target = "openjarvis.telemetry.vllm_metrics.httpx.get"
-        with patch(target, return_value=FakeResp()):
-            metrics = scraper.scrape()
+        import openjarvis.telemetry.vllm_metrics as _mod
+        monkeypatch.setattr(_mod.httpx, "get", lambda *a, **kw: FakeResp())
+        metrics = scraper.scrape()
 
         assert metrics.gpu_cache_usage_pct == 0.42
         assert metrics.queue_depth == 3.0
         assert metrics.ttft_p50 > 0
 
-    def test_scrape_http_error(self):
+    @pytest.mark.spec("REQ-telemetry.vllm")
+    def test_scrape_http_error(self, monkeypatch):
         import httpx as _httpx
 
         scraper = VLLMMetricsScraper("http://localhost:8000")
@@ -189,12 +205,13 @@ class TestVLLMMetricsScraper:
                 "Server Error", request=request, response=response
             )
 
-        target = "openjarvis.telemetry.vllm_metrics.httpx.get"
-        with patch(target, side_effect=raise_status_error):
-            metrics = scraper.scrape()
+        import openjarvis.telemetry.vllm_metrics as _mod
+        monkeypatch.setattr(_mod.httpx, "get", raise_status_error)
+        metrics = scraper.scrape()
 
         assert metrics == VLLMMetrics()
 
+    @pytest.mark.spec("REQ-telemetry.vllm")
     def test_empty_response(self):
         scraper = VLLMMetricsScraper()
         metrics = scraper._parse("")

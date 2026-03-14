@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List
 
+import pytest
+
 from openjarvis.learning.agents.skill_discovery import SkillDiscovery
 
 # ---------------------------------------------------------------------------
@@ -60,12 +62,14 @@ def _make_dict_trace(tools: List[str], outcome: float = 1.0, query: str = "") ->
 
 
 class TestSkillDiscovery:
+    @pytest.mark.spec("REQ-learning.query-analyzer")
     def test_empty_traces(self):
         sd = SkillDiscovery()
         result = sd.analyze_traces([])
         assert result == []
         assert sd.discovered_skills == []
 
+    @pytest.mark.spec("REQ-learning.query-analyzer")
     def test_single_trace_below_threshold(self):
         """One trace cannot meet min_frequency=3."""
         sd = SkillDiscovery(min_frequency=3)
@@ -73,6 +77,7 @@ class TestSkillDiscovery:
         result = sd.analyze_traces(traces)
         assert result == []
 
+    @pytest.mark.spec("REQ-learning.query-analyzer")
     def test_recurring_sequence(self):
         """3+ traces with same 2-tool sequence should be discovered."""
         sd = SkillDiscovery(min_frequency=3, min_outcome=0.5)
@@ -90,6 +95,7 @@ class TestSkillDiscovery:
         assert skill.tool_sequence == ["web_search", "file_write"]
         assert skill.avg_outcome >= 0.5
 
+    @pytest.mark.spec("REQ-learning.query-analyzer")
     def test_outcome_threshold(self):
         """Low-outcome sequences should be filtered out."""
         sd = SkillDiscovery(min_frequency=3, min_outcome=0.8)
@@ -100,6 +106,7 @@ class TestSkillDiscovery:
         result = sd.analyze_traces(traces)
         assert result == []
 
+    @pytest.mark.spec("REQ-learning.query-analyzer")
     def test_sequence_length_limits(self):
         """Sequences shorter than min or longer than max should be excluded."""
         # Only length-1 tools (below min_sequence_length=2)
@@ -124,6 +131,7 @@ class TestSkillDiscovery:
         for skill in result2:
             assert len(skill.tool_sequence) == 2
 
+    @pytest.mark.spec("REQ-learning.query-analyzer")
     def test_to_skill_manifests(self):
         """Verify manifest dict format has expected keys."""
         sd = SkillDiscovery(min_frequency=2, min_outcome=0.0)
@@ -146,6 +154,7 @@ class TestSkillDiscovery:
             assert "tool" in step
             assert "params" in step
 
+    @pytest.mark.spec("REQ-learning.query-analyzer")
     def test_sort_by_quality(self):
         """Higher frequency*outcome skills should come first."""
         sd = SkillDiscovery(min_frequency=2, min_outcome=0.0)
@@ -167,6 +176,7 @@ class TestSkillDiscovery:
         q1 = result[1].frequency * result[1].avg_outcome
         assert q0 >= q1
 
+    @pytest.mark.spec("REQ-learning.query-analyzer")
     def test_dict_traces(self):
         """Test with dict-format traces instead of objects."""
         sd = SkillDiscovery(min_frequency=3, min_outcome=0.5)
@@ -184,6 +194,7 @@ class TestSkillDiscovery:
             all_tools.extend(skill.tool_sequence)
         assert "read" in all_tools or "compute" in all_tools
 
+    @pytest.mark.spec("REQ-learning.query-analyzer")
     def test_example_inputs_captured(self):
         """Example queries should be stored (up to 3)."""
         sd = SkillDiscovery(min_frequency=3, min_outcome=0.5)
@@ -203,6 +214,7 @@ class TestSkillDiscovery:
         assert len(skill.example_inputs) <= 3
         assert all("Find info about topic" in q for q in skill.example_inputs)
 
+    @pytest.mark.spec("REQ-learning.query-analyzer")
     def test_enum_step_type(self):
         """Steps with enum-style step_type (has .value) should work."""
         sd = SkillDiscovery(min_frequency=3, min_outcome=0.0)

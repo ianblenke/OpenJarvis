@@ -21,6 +21,7 @@ def manager():
 class TestResearchMonitorE2E:
     """Vertical slice: Research Monitor agent lifecycle."""
 
+    @pytest.mark.spec("REQ-agents.manager.crud")
     def test_create_from_template(self, manager):
         templates = manager.list_templates()
         assert any(t["id"] == "research_monitor" for t in templates)
@@ -34,6 +35,7 @@ class TestResearchMonitorE2E:
         config = agent["config"]
         assert "web_search" in config.get("tools", [])
 
+    @pytest.mark.spec("REQ-agents.manager.crud")
     def test_full_lifecycle(self, manager):
         # Create
         agent = manager.create_agent(name="lifecycle_test", agent_type="simple")
@@ -76,6 +78,7 @@ class TestResearchMonitorE2E:
         # Archived agents not in default list
         assert agent_id not in [a["id"] for a in manager.list_agents()]
 
+    @pytest.mark.spec("REQ-agents.manager.crud")
     def test_template_with_overrides(self, manager):
         agent = manager.create_from_template(
             "research_monitor",

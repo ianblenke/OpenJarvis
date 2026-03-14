@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from openjarvis.core.types import ToolCall, ToolResult
 from openjarvis.tools._stubs import BaseTool, ToolExecutor, ToolSpec
 
@@ -52,6 +54,7 @@ class _DangerousTool(BaseTool):
 
 
 class TestToolConfirmation:
+    @pytest.mark.spec("REQ-tools.executor.security")
     def test_requires_confirmation_no_callback(self) -> None:
         """Tool requiring confirmation but no callback → blocked."""
         executor = ToolExecutor([_DangerousTool()])
@@ -60,6 +63,7 @@ class TestToolConfirmation:
         assert result.success is False
         assert "requires confirmation" in result.content
 
+    @pytest.mark.spec("REQ-tools.executor.security")
     def test_requires_confirmation_not_interactive(self) -> None:
         """Tool requiring confirmation but interactive=False → blocked."""
         executor = ToolExecutor(
@@ -72,6 +76,7 @@ class TestToolConfirmation:
         assert result.success is False
         assert "requires confirmation" in result.content
 
+    @pytest.mark.spec("REQ-tools.executor.security")
     def test_requires_confirmation_denied(self) -> None:
         """Tool requiring confirmation, callback returns False → denied."""
         executor = ToolExecutor(
@@ -84,6 +89,7 @@ class TestToolConfirmation:
         assert result.success is False
         assert "denied by user" in result.content
 
+    @pytest.mark.spec("REQ-tools.executor.security")
     def test_requires_confirmation_approved(self) -> None:
         """Tool requiring confirmation, callback returns True → executes."""
         executor = ToolExecutor(
@@ -96,6 +102,7 @@ class TestToolConfirmation:
         assert result.success is True
         assert result.content == "executed!"
 
+    @pytest.mark.spec("REQ-tools.executor.security")
     def test_no_confirmation_needed(self) -> None:
         """Tool without requires_confirmation works normally."""
         executor = ToolExecutor([_SafeTool()])
@@ -104,6 +111,7 @@ class TestToolConfirmation:
         assert result.success is True
         assert result.content == "safe result"
 
+    @pytest.mark.spec("REQ-tools.executor.security")
     def test_no_confirmation_needed_with_callback(self) -> None:
         """Tool without requires_confirmation ignores callback."""
         calls = []
@@ -118,6 +126,7 @@ class TestToolConfirmation:
         # Callback should NOT have been called
         assert len(calls) == 0
 
+    @pytest.mark.spec("REQ-tools.executor.security")
     def test_confirmation_callback_receives_message(self) -> None:
         """Confirm callback receives a descriptive message."""
         received = []

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,6 +17,7 @@ from openjarvis.optimize.personal.synthesizer import (
     PersonalBenchmarkSynthesizer,
 )
 from openjarvis.traces.store import TraceStore
+from tests.fixtures.engines import FakeInferenceBackend
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,24 +58,28 @@ def trace_store(tmp_path: Path) -> TraceStore:
 
 
 class TestPersonalBenchmarkSampleDefaults:
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_default_category(self) -> None:
         sample = PersonalBenchmarkSample(
             trace_id="t1", query="hello", reference_answer="world",
         )
         assert sample.category == "chat"
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_default_agent_empty(self) -> None:
         sample = PersonalBenchmarkSample(
             trace_id="t1", query="q", reference_answer="a",
         )
         assert sample.agent == ""
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_default_feedback_score_zero(self) -> None:
         sample = PersonalBenchmarkSample(
             trace_id="t1", query="q", reference_answer="a",
         )
         assert sample.feedback_score == 0.0
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_default_metadata_empty(self) -> None:
         sample = PersonalBenchmarkSample(
             trace_id="t1", query="q", reference_answer="a",
@@ -89,6 +93,7 @@ class TestPersonalBenchmarkSampleDefaults:
 
 
 class TestPersonalBenchmarkSynthesizer:
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_synthesize_creates_benchmark_from_traces(
         self, trace_store: TraceStore,
     ) -> None:
@@ -100,6 +105,7 @@ class TestPersonalBenchmarkSynthesizer:
         assert len(bm.samples) == 2
         assert bm.created_at > 0
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_filter_by_min_feedback(self, trace_store: TraceStore) -> None:
         trace_store.save(_make_trace(trace_id="t1", feedback=0.9))
         trace_store.save(_make_trace(trace_id="t2", feedback=0.5))
@@ -109,6 +115,7 @@ class TestPersonalBenchmarkSynthesizer:
         assert len(bm.samples) == 1
         assert bm.samples[0].trace_id == "t1"
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_none_feedback_excluded(self, trace_store: TraceStore) -> None:
         trace_store.save(_make_trace(trace_id="t1", feedback=None))
         trace_store.save(_make_trace(trace_id="t2", feedback=0.8))
@@ -117,6 +124,7 @@ class TestPersonalBenchmarkSynthesizer:
         assert len(bm.samples) == 1
         assert bm.samples[0].trace_id == "t2"
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_grouping_by_query_class(self, trace_store: TraceStore) -> None:
         """Same agent + same query prefix -> same group, so only one sample."""
         trace_store.save(_make_trace(
@@ -136,6 +144,7 @@ class TestPersonalBenchmarkSynthesizer:
         # Should collapse into one sample (same group)
         assert len(bm.samples) == 1
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_picks_highest_feedback_per_group(self, trace_store: TraceStore) -> None:
         trace_store.save(_make_trace(
             trace_id="t1",
@@ -158,6 +167,7 @@ class TestPersonalBenchmarkSynthesizer:
         assert bm.samples[0].reference_answer == "great joke"
         assert bm.samples[0].feedback_score == 0.99
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_different_agents_separate_groups(self, trace_store: TraceStore) -> None:
         trace_store.save(
             _make_trace(trace_id="t1", query="Hello", agent="simple", feedback=0.9),
@@ -172,6 +182,7 @@ class TestPersonalBenchmarkSynthesizer:
         bm = synth.synthesize()
         assert len(bm.samples) == 2
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_max_samples_limit(self, trace_store: TraceStore) -> None:
         for i in range(10):
             trace_store.save(
@@ -185,6 +196,7 @@ class TestPersonalBenchmarkSynthesizer:
         bm = synth.synthesize(max_samples=3)
         assert len(bm.samples) == 3
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_empty_traces_returns_empty_benchmark(
         self, trace_store: TraceStore,
     ) -> None:
@@ -193,6 +205,7 @@ class TestPersonalBenchmarkSynthesizer:
         assert bm.samples == []
         assert bm.workflow_id == "default"
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_category_inferred_from_agent(self, trace_store: TraceStore) -> None:
         trace_store.save(
             _make_trace(trace_id="t1", agent="orchestrator", feedback=0.9),
@@ -211,6 +224,7 @@ class TestPersonalBenchmarkSynthesizer:
         assert categories["orchestrator"] == "agentic"
         assert categories["simple"] == "chat"
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_samples_sorted_by_feedback_desc(self, trace_store: TraceStore) -> None:
         trace_store.save(
             _make_trace(trace_id="t1", query="Q1", feedback=0.75),
@@ -249,11 +263,13 @@ class TestPersonalBenchmarkDataset:
             ],
         )
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_load_creates_records(self) -> None:
         ds = PersonalBenchmarkDataset(self._make_benchmark())
         ds.load()
         assert ds.size() == 5
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_iter_records(self) -> None:
         ds = PersonalBenchmarkDataset(self._make_benchmark())
         ds.load()
@@ -261,6 +277,7 @@ class TestPersonalBenchmarkDataset:
         assert len(records) == 5
         assert all(isinstance(r, EvalRecord) for r in records)
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_record_fields_mapped(self) -> None:
         ds = PersonalBenchmarkDataset(self._make_benchmark())
         ds.load()
@@ -271,20 +288,24 @@ class TestPersonalBenchmarkDataset:
         assert rec.category == "chat"
         assert rec.subject == "simple"
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_max_samples(self) -> None:
         ds = PersonalBenchmarkDataset(self._make_benchmark())
         ds.load(max_samples=2)
         assert ds.size() == 2
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_size_before_load(self) -> None:
         ds = PersonalBenchmarkDataset(self._make_benchmark())
         assert ds.size() == 0
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_dataset_id_and_name(self) -> None:
         ds = PersonalBenchmarkDataset(self._make_benchmark())
         assert ds.dataset_id == "personal"
         assert ds.dataset_name == "Personal Benchmark"
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_empty_benchmark(self) -> None:
         bm = PersonalBenchmark(workflow_id="empty")
         ds = PersonalBenchmarkDataset(bm)
@@ -292,6 +313,7 @@ class TestPersonalBenchmarkDataset:
         assert ds.size() == 0
         assert list(ds.iter_records()) == []
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_subject_defaults_to_general(self) -> None:
         bm = PersonalBenchmark(
             workflow_id="test",
@@ -317,8 +339,7 @@ class TestPersonalBenchmarkDataset:
 
 class TestPersonalBenchmarkScorer:
     def _make_scorer(self, judge_response: str) -> PersonalBenchmarkScorer:
-        backend = MagicMock()
-        backend.generate.return_value = judge_response
+        backend = FakeInferenceBackend(responses=[judge_response])
         return PersonalBenchmarkScorer(backend, "judge-model")
 
     def _make_record(self) -> EvalRecord:
@@ -329,43 +350,48 @@ class TestPersonalBenchmarkScorer:
             category="chat",
         )
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_score_yes(self) -> None:
         scorer = self._make_scorer("YES\nThe answer is correct.")
         is_correct, meta = scorer.score(self._make_record(), "4")
         assert is_correct is True
         assert "judge_response" in meta
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_score_no(self) -> None:
         scorer = self._make_scorer("NO\nThe answer is incorrect.")
         is_correct, meta = scorer.score(self._make_record(), "5")
         assert is_correct is False
         assert "judge_response" in meta
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_score_yes_case_insensitive(self) -> None:
         scorer = self._make_scorer("yes, the answer is good")
         is_correct, _ = scorer.score(self._make_record(), "4")
         assert is_correct is True
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_score_no_multiline(self) -> None:
         scorer = self._make_scorer("NO\nLine2\nLine3")
         is_correct, _ = scorer.score(self._make_record(), "wrong")
         assert is_correct is False
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_judge_receives_prompt_with_query_and_reference(self) -> None:
-        backend = MagicMock()
-        backend.generate.return_value = "YES"
+        backend = FakeInferenceBackend(responses=["YES"])
         scorer = PersonalBenchmarkScorer(backend, "judge-model")
         record = self._make_record()
         scorer.score(record, "4")
-        call_args = backend.generate.call_args
-        prompt = call_args[0][0]
+        prompt = backend.call_history[-1]["prompt"]
         assert "What is 2+2?" in prompt
         assert "4" in prompt  # reference
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_scorer_id(self) -> None:
         scorer = self._make_scorer("YES")
         assert scorer.scorer_id == "personal_judge"
 
+    @pytest.mark.spec("REQ-learning.learning-policy")
     def test_score_empty_response_treated_as_no(self) -> None:
         scorer = self._make_scorer("")
         is_correct, _ = scorer.score(self._make_record(), "4")

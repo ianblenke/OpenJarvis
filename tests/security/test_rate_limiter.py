@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from openjarvis.security.rate_limiter import (
     RateLimitConfig,
     RateLimiter,
@@ -14,6 +16,7 @@ from openjarvis.security.rate_limiter import (
 class TestTokenBucket:
     """Tests for the TokenBucket class."""
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_initial_capacity(self) -> None:
         """New bucket allows burst_size requests."""
         bucket = TokenBucket(rate=1.0, capacity=5)
@@ -22,6 +25,7 @@ class TestTokenBucket:
             assert allowed is True
             assert wait == 0.0
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_consume_reduces_tokens(self) -> None:
         """After consume, available decreases."""
         bucket = TokenBucket(rate=1.0, capacity=10)
@@ -29,6 +33,7 @@ class TestTokenBucket:
         bucket.consume(3)
         assert bucket.available < initial
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_refill_over_time(self) -> None:
         """After waiting, tokens refill."""
         bucket = TokenBucket(rate=10.0, capacity=5)
@@ -40,6 +45,7 @@ class TestTokenBucket:
         time.sleep(0.15)
         assert bucket.available >= 1.0
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_exceeds_capacity(self) -> None:
         """Consuming more than available returns (False, wait_time)."""
         bucket = TokenBucket(rate=1.0, capacity=3)
@@ -50,6 +56,7 @@ class TestTokenBucket:
         assert allowed is False
         assert wait > 0.0
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_burst(self) -> None:
         """Can consume burst_size tokens immediately."""
         capacity = 8
@@ -62,6 +69,7 @@ class TestTokenBucket:
 class TestRateLimiter:
     """Tests for the RateLimiter class."""
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_disabled(self) -> None:
         """When enabled=False, always allows."""
         config = RateLimitConfig(enabled=False, burst_size=1, requests_per_minute=1)
@@ -71,6 +79,7 @@ class TestRateLimiter:
             assert allowed is True
             assert wait == 0.0
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_allows_within_limit(self) -> None:
         """Requests within RPM are allowed."""
         config = RateLimitConfig(requests_per_minute=600, burst_size=10)
@@ -79,6 +88,7 @@ class TestRateLimiter:
             allowed, _ = limiter.check("agent_a")
             assert allowed is True
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_blocks_over_limit(self) -> None:
         """Rapid requests beyond burst are blocked."""
         config = RateLimitConfig(requests_per_minute=60, burst_size=3)
@@ -92,6 +102,8 @@ class TestRateLimiter:
         assert allowed is False
         assert wait > 0.0
 
+    @pytest.mark.spec("REQ-security.rate-limiter.per-key")
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_separate_keys(self) -> None:
         """Different keys have independent limits."""
         config = RateLimitConfig(requests_per_minute=60, burst_size=2)
@@ -105,6 +117,7 @@ class TestRateLimiter:
         allowed_key2, _ = limiter.check("key2")
         assert allowed_key2 is True
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_reset_key(self) -> None:
         """Reset clears specific key."""
         config = RateLimitConfig(requests_per_minute=60, burst_size=2)
@@ -118,6 +131,7 @@ class TestRateLimiter:
         allowed, _ = limiter.check("key1")
         assert allowed is True
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_reset_all(self) -> None:
         """Reset without key clears everything."""
         config = RateLimitConfig(requests_per_minute=60, burst_size=1)
@@ -132,6 +146,7 @@ class TestRateLimiter:
         assert limiter.check("key1")[0] is True
         assert limiter.check("key2")[0] is True
 
+    @pytest.mark.spec("REQ-security.rate-limiter.token-bucket")
     def test_default_config(self) -> None:
         """Default values are reasonable."""
         limiter = RateLimiter()

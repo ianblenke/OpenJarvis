@@ -12,6 +12,7 @@ from openjarvis.telemetry.store import TelemetryStore
 
 
 class TestTokensPerJouleStorage:
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_store_and_retrieve(self, tmp_path):
         db = tmp_path / "tel.db"
         store = TelemetryStore(db_path=db)
@@ -30,6 +31,7 @@ class TestTokensPerJouleStorage:
         assert stats[0].avg_tokens_per_joule == pytest.approx(20.0, rel=0.1)
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_aggregate_multiple(self, tmp_path):
         db = tmp_path / "tel.db"
         store = TelemetryStore(db_path=db)
@@ -46,6 +48,7 @@ class TestTokensPerJouleStorage:
         assert stats[0].avg_tokens_per_joule == pytest.approx(20.0, rel=0.1)
         agg.close()
 
+    @pytest.mark.spec("REQ-telemetry.derived")
     def test_engine_stats_aggregate(self, tmp_path):
         db = tmp_path / "tel.db"
         store = TelemetryStore(db_path=db)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.types import ToolResult
 from openjarvis.skills.executor import SkillExecutor
@@ -42,6 +44,7 @@ class UpperTool(BaseTool):
 
 
 class TestSkillManifest:
+    @pytest.mark.spec("REQ-skills.types.step")
     def test_create_manifest(self):
         manifest = SkillManifest(
             name="test_skill",
@@ -143,6 +146,7 @@ class TestSkillExecutor:
 
 
 class TestSkillTool:
+    @pytest.mark.spec("REQ-skills.tool-adapter")
     def test_skill_as_tool(self):
         from openjarvis.skills.tool_adapter import SkillTool
 

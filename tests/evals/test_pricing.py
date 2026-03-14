@@ -8,10 +8,12 @@ from openjarvis.evals.core.pricing import PRICING, compute_turn_cost, estimate_c
 
 
 class TestPricing:
+    @pytest.mark.spec("REQ-evals.backends")
     def test_pricing_dict_nonempty(self):
         assert isinstance(PRICING, dict)
         assert len(PRICING) > 0
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_compute_turn_cost_known_model(self):
         # Pick a model that's in PRICING (cloud models)
         if not PRICING:
@@ -21,10 +23,12 @@ class TestPricing:
         assert isinstance(cost, (int, float))
         assert cost >= 0
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_compute_turn_cost_unknown_model(self):
         cost = compute_turn_cost("totally-unknown-local-model", 1000, 500)
         assert cost == 0.0
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_compute_turn_cost_zero_tokens(self):
         if not PRICING:
             pytest.skip("No models in PRICING dict")
@@ -32,6 +36,7 @@ class TestPricing:
         cost = compute_turn_cost(model, 0, 0)
         assert cost == 0.0
 
+    @pytest.mark.spec("REQ-evals.backends")
     def test_estimate_cost_alias(self):
         # estimate_cost is the same as engine/cloud.py estimate_cost
         cost = estimate_cost("unknown-model", 100, 50)

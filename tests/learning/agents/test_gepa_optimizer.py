@@ -1,12 +1,26 @@
-"""Tests for the GEPA agent optimizer (mocked -- no gepa dependency required)."""
+"""Tests for the GEPA agent optimizer (no gepa dependency required)."""
 
 from __future__ import annotations
 
+import sys
 import time
-from unittest.mock import MagicMock, patch
+from typing import Any, List
+
+import pytest
+
+
+class _FakeTraceStore:
+    """Typed fake for trace store used by optimizers."""
+
+    def __init__(self, traces: List[Any] = None) -> None:
+        self._traces = traces or []
+
+    def list_traces(self, **kwargs) -> List[Any]:
+        return self._traces
 
 
 class TestGEPAOptimizerConfig:
+    @pytest.mark.spec("REQ-learning.gepa-optimizer")
     def test_default_config(self) -> None:
         from openjarvis.core.config import GEPAOptimizerConfig
 
@@ -15,6 +29,7 @@ class TestGEPAOptimizerConfig:
         assert cfg.population_size == 10
         assert cfg.min_traces == 20
 
+    @pytest.mark.spec("REQ-learning.gepa-optimizer")
     def test_optimizer_init(self) -> None:
         from openjarvis.core.config import GEPAOptimizerConfig
         from openjarvis.learning.agents.gepa_optimizer import GEPAAgentOptimizer
@@ -25,18 +40,20 @@ class TestGEPAOptimizerConfig:
 
 
 class TestGEPAOptimizerOptimize:
+    @pytest.mark.spec("REQ-learning.gepa-optimizer")
     def test_too_few_traces_skipped(self) -> None:
         from openjarvis.core.config import GEPAOptimizerConfig
         from openjarvis.learning.agents.gepa_optimizer import GEPAAgentOptimizer
 
         optimizer = GEPAAgentOptimizer(GEPAOptimizerConfig(min_traces=10))
-        mock_store = MagicMock()
-        mock_store.list_traces.return_value = []
+        store = _FakeTraceStore(traces=[])
 
-        result = optimizer.optimize(mock_store)
+        result = optimizer.optimize(store)
         assert result["status"] == "skipped"
 
-    def test_no_gepa_reports_error(self) -> None:
+    @pytest.mark.spec("REQ-learning.gepa-optimizer")
+    def test_no_gepa_reports_error(self, monkeypatch) -> None:
+        import openjarvis.learning.agents.gepa_optimizer as gepa_mod
         from openjarvis.core.config import GEPAOptimizerConfig
         from openjarvis.core.types import StepType, Trace, TraceStep
         from openjarvis.learning.agents.gepa_optimizer import GEPAAgentOptimizer
@@ -57,29 +74,27 @@ class TestGEPAOptimizerOptimize:
             )],
         )]
 
-        mock_store = MagicMock()
-        mock_store.list_traces.return_value = traces
+        store = _FakeTraceStore(traces=traces)
 
         # Ensure gepa is not available
-        with patch.dict("sys.modules", {"gepa": None}):
-            with patch(
-                "openjarvis.learning.agents.gepa_optimizer.HAS_GEPA",
-                False,
-            ):
-                result = optimizer.optimize(mock_store)
-                assert result["status"] == "error"
-                assert "gepa" in result["reason"].lower()
+        monkeypatch.setitem(sys.modules, "gepa", None)
+        monkeypatch.setattr(gepa_mod, "HAS_GEPA", False)
+
+        result = optimizer.optimize(store)
+        assert result["status"] == "error"
+        assert "gepa" in result["reason"].lower()
 
 
 class TestOpenJarvisGEPAAdapter:
+    @pytest.mark.spec("REQ-learning.gepa-optimizer")
     def test_adapter_init(self) -> None:
         from openjarvis.core.config import GEPAOptimizerConfig
         from openjarvis.learning.agents.gepa_optimizer import (
             OpenJarvisGEPAAdapter,
         )
 
-        mock_store = MagicMock()
+        store = _FakeTraceStore()
         adapter = OpenJarvisGEPAAdapter(
-            mock_store, "native_react", GEPAOptimizerConfig(),
+            store, "native_react", GEPAOptimizerConfig(),
         )
         assert adapter.agent_name == "native_react"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import pytest
 
 from openjarvis.optimize.trial_runner import BenchmarkSpec, MultiBenchTrialRunner
 from openjarvis.optimize.types import (
@@ -54,12 +54,14 @@ def _make_trial_result(
 
 
 class TestBenchmarkSpec:
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_defaults(self):
         spec = BenchmarkSpec(benchmark="supergpqa")
         assert spec.benchmark == "supergpqa"
         assert spec.max_samples == 200
         assert spec.weight == 1.0
 
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_custom(self):
         spec = BenchmarkSpec(benchmark="gaia", max_samples=100, weight=0.4)
         assert spec.max_samples == 100
@@ -72,6 +74,7 @@ class TestBenchmarkSpec:
 
 
 class TestBenchmarkScore:
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_creation(self):
         score = BenchmarkScore(
             benchmark="hle", accuracy=0.75, weight=0.2,
@@ -91,6 +94,7 @@ class TestBenchmarkScore:
 class TestMultiBenchAggregation:
     """Test the _aggregate method directly."""
 
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_weighted_accuracy_040_040_020(self):
         """Verify 0.4/0.4/0.2 weighting matches expected composite."""
         config = TrialConfig(trial_id="agg-001", params={})
@@ -146,6 +150,7 @@ class TestMultiBenchAggregation:
         assert len(result.per_benchmark) == 3
         assert result.per_benchmark[0].benchmark == "terminalbench-native"
 
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_unequal_samples(self):
         """Latency weighting adjusts for different sample counts."""
         config = TrialConfig(trial_id="agg-002", params={})
@@ -173,6 +178,7 @@ class TestMultiBenchAggregation:
         # Latency: (10*100 + 2*400) / 500 = 1800/500 = 3.6
         assert abs(result.mean_latency_seconds - 3.6) < 1e-6
 
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_errors_in_failure_modes(self):
         config = TrialConfig(trial_id="agg-003", params={})
         per_benchmark = [
@@ -194,10 +200,19 @@ class TestMultiBenchAggregation:
 
 
 class TestMultiBenchRunTrial:
-    @patch("openjarvis.optimize.trial_runner.TrialRunner.run_trial")
-    def test_delegates_to_trial_runners(self, mock_run_trial):
+    @pytest.mark.spec("REQ-learning.trial-runner")
+    def test_delegates_to_trial_runners(self, monkeypatch):
         """Each benchmark gets its own TrialRunner call."""
-        mock_run_trial.return_value = _make_trial_result()
+        from openjarvis.optimize.trial_runner import TrialRunner
+
+        call_count = 0
+
+        def fake_run_trial(self, config, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return _make_trial_result()
+
+        monkeypatch.setattr(TrialRunner, "run_trial", fake_run_trial)
 
         specs = [
             BenchmarkSpec("bench-a", max_samples=10, weight=0.6),
@@ -208,7 +223,7 @@ class TestMultiBenchRunTrial:
 
         result = runner.run_trial(trial)
 
-        assert mock_run_trial.call_count == 2
+        assert call_count == 2
         assert len(result.per_benchmark) == 2
         assert result.per_benchmark[0].weight == 0.6
         assert result.per_benchmark[1].weight == 0.4
@@ -220,6 +235,7 @@ class TestMultiBenchRunTrial:
 
 
 class TestLoadBenchmarkSpecs:
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_multi_benchmark_format(self):
         from openjarvis.optimize.config import load_benchmark_specs
 
@@ -239,6 +255,7 @@ class TestLoadBenchmarkSpecs:
         assert specs[2].benchmark == "hle"
         assert specs[2].weight == 0.2
 
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_single_benchmark_fallback(self):
         from openjarvis.optimize.config import load_benchmark_specs
 
@@ -253,12 +270,14 @@ class TestLoadBenchmarkSpecs:
         assert specs[0].benchmark == "supergpqa"
         assert specs[0].max_samples == 100
 
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_empty_returns_empty(self):
         from openjarvis.optimize.config import load_benchmark_specs
 
         specs = load_benchmark_specs({"optimize": {}})
         assert specs == []
 
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_no_optimize_section(self):
         from openjarvis.optimize.config import load_benchmark_specs
 
@@ -272,6 +291,7 @@ class TestLoadBenchmarkSpecs:
 
 
 class TestTrialResultPerBenchmark:
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_default_empty(self):
         result = TrialResult(
             trial_id="x",
@@ -279,6 +299,7 @@ class TestTrialResultPerBenchmark:
         )
         assert result.per_benchmark == []
 
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_populated(self):
         scores = [
             BenchmarkScore(benchmark="a", accuracy=0.8, weight=0.5),
@@ -298,12 +319,14 @@ class TestTrialResultPerBenchmark:
 
 
 class TestParamToRecipe:
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_max_tokens_mapping(self):
         from openjarvis.optimize.types import _PARAM_TO_RECIPE
 
         assert "intelligence.max_tokens" in _PARAM_TO_RECIPE
         assert _PARAM_TO_RECIPE["intelligence.max_tokens"] == "max_tokens"
 
+    @pytest.mark.spec("REQ-learning.trial-runner")
     def test_trial_config_to_recipe_max_tokens(self):
         config = TrialConfig(
             trial_id="t1",

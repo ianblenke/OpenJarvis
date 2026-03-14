@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pathlib
-from unittest.mock import MagicMock
+from typing import Any, Dict, List
 
 import pytest
 
@@ -17,18 +17,29 @@ from openjarvis.server.app import create_app  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
+class _FakeEngine:
+    """Typed fake engine for PWA serving tests."""
+
+    def __init__(self) -> None:
+        self.engine_id = "mock"
+
+    def health(self) -> bool:
+        return True
+
+    def list_models(self) -> List[str]:
+        return ["test-model"]
+
+    def generate(self, messages, **kwargs) -> Dict[str, Any]:
+        return {
+            "content": "hello",
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            "model": "test-model",
+            "finish_reason": "stop",
+        }
+
+
 def _make_engine():
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.health.return_value = True
-    engine.list_models.return_value = ["test-model"]
-    engine.generate.return_value = {
-        "content": "hello",
-        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
-        "model": "test-model",
-        "finish_reason": "stop",
-    }
-    return engine
+    return _FakeEngine()
 
 
 def _create_static_dir(tmp_path: pathlib.Path) -> pathlib.Path:
@@ -73,24 +84,28 @@ def client_with_static(tmp_path, monkeypatch):
 
 
 class TestPWAServing:
+    @pytest.mark.spec("REQ-server.pwa")
     def test_sw_js_served_as_file(self, client_with_static):
         """Service worker file should be served directly, not as index.html."""
         resp = client_with_static.get("/sw.js")
         assert resp.status_code == 200
         assert "// service worker" in resp.text
 
+    @pytest.mark.spec("REQ-server.pwa")
     def test_manifest_served_as_file(self, client_with_static):
         """Web manifest should be served directly."""
         resp = client_with_static.get("/manifest.webmanifest")
         assert resp.status_code == 200
         assert "OpenJarvis" in resp.text
 
+    @pytest.mark.spec("REQ-server.pwa")
     def test_icon_served_as_file(self, client_with_static):
         """PWA icon should be served directly."""
         resp = client_with_static.get("/pwa-192x192.png")
         assert resp.status_code == 200
         assert b"PNG" in resp.content
 
+    @pytest.mark.spec("REQ-server.pwa")
     def test_api_routes_bypass_spa(self, client_with_static):
         """API routes should still work regardless of SPA catch-all."""
         resp = client_with_static.get("/v1/models")
@@ -98,6 +113,7 @@ class TestPWAServing:
         data = resp.json()
         assert data["object"] == "list"
 
+    @pytest.mark.spec("REQ-server.pwa")
     def test_path_traversal_blocked(self, client_with_static):
         """Path traversal attempts should fall back to index.html."""
         resp = client_with_static.get("/../../etc/passwd")

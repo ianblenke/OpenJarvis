@@ -19,6 +19,7 @@ def engine() -> MLXEngine:
 
 
 class TestMLXGenerate:
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_generate_returns_content(self, engine: MLXEngine) -> None:
         with respx.mock:
             respx.post("http://testhost:8080/v1/chat/completions").mock(
@@ -45,6 +46,7 @@ class TestMLXGenerate:
             )
         assert result["content"] == "4"
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_generate_connection_error(self, engine: MLXEngine) -> None:
         with respx.mock:
             respx.post("http://testhost:8080/v1/chat/completions").mock(
@@ -57,6 +59,7 @@ class TestMLXGenerate:
 
 
 class TestMLXHealth:
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_true(self, engine: MLXEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:8080/v1/models").mock(
@@ -64,6 +67,7 @@ class TestMLXHealth:
             )
             assert engine.health() is True
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_false(self, engine: MLXEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:8080/v1/models").mock(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -16,6 +16,43 @@ from openjarvis.core.types import (
     TelemetryRecord,
     ToolCall,
 )
+
+# ---------------------------------------------------------------------------
+# Typed fakes (replacing MagicMock)
+# ---------------------------------------------------------------------------
+
+
+class _FakeEngine:
+    """Typed fake engine for integration tests."""
+
+    def __init__(
+        self,
+        content: str = "Hello from engine",
+        responses: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        self.engine_id = "mock"
+        self._content = content
+        self._responses = responses
+        self._call_idx = 0
+
+    def health(self) -> bool:
+        return True
+
+    def list_models(self) -> List[str]:
+        return ["test-model"]
+
+    def generate(self, messages, **kwargs) -> Dict[str, Any]:
+        if self._responses is not None:
+            resp = self._responses[self._call_idx]
+            self._call_idx += 1
+            return resp
+        return {
+            "content": self._content,
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
+            "model": "test-model",
+            "finish_reason": "stop",
+        }
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,17 +80,7 @@ def _register_tools():
 
 
 def _make_engine(content="Hello from engine"):
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.health.return_value = True
-    engine.list_models.return_value = ["test-model"]
-    engine.generate.return_value = {
-        "content": content,
-        "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
-        "model": "test-model",
-        "finish_reason": "stop",
-    }
-    return engine
+    return _FakeEngine(content=content)
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +91,7 @@ def _make_engine(content="Hello from engine"):
 class TestSimpleAgentPipeline:
     """End-to-end: SimpleAgent with mocked engine."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_full_flow(self):
         _register_agents()
         engine = _make_engine("The answer is 42.")
@@ -82,6 +110,7 @@ class TestSimpleAgentPipeline:
         assert EventType.AGENT_TURN_START in event_types
         assert EventType.AGENT_TURN_END in event_types
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_with_context(self):
         _register_agents()
         engine = _make_engine("Contextualized response.")
@@ -97,15 +126,14 @@ class TestSimpleAgentPipeline:
 class TestOrchestratorWithCalculator:
     """End-to-end: OrchestratorAgent with calculator tool."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_calculator_tool_call(self):
         _register_agents()
         _register_tools()
 
         from openjarvis.tools.calculator import CalculatorTool
 
-        engine = MagicMock()
-        engine.engine_id = "mock"
-        engine.generate.side_effect = [
+        engine = _FakeEngine(responses=[
             {
                 "content": "",
                 "tool_calls": [
@@ -133,7 +161,7 @@ class TestOrchestratorWithCalculator:
                 "model": "test-model",
                 "finish_reason": "stop",
             },
-        ]
+        ])
 
         bus = EventBus(record_history=True)
         agent_cls = AgentRegistry.get("orchestrator")
@@ -159,6 +187,7 @@ class TestOrchestratorWithCalculator:
 class TestAPIServerRoundtrip:
     """End-to-end: API server request/response cycle."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_roundtrip(self):
         pytest.importorskip("fastapi")
         from fastapi.testclient import TestClient
@@ -184,6 +213,7 @@ class TestAPIServerRoundtrip:
         assert msg == "API response!"
         assert data["object"] == "chat.completion"
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_models_endpoint(self):
         pytest.importorskip("fastapi")
         from fastapi.testclient import TestClient
@@ -203,6 +233,7 @@ class TestAPIServerRoundtrip:
 class TestEventBusFullFlow:
     """Verify the complete event chain through an agent run."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_all_events_recorded(self):
         """Agent-level events are recorded; INFERENCE_START/END and
         TELEMETRY_RECORD are now published by InstrumentedEngine."""
@@ -220,6 +251,7 @@ class TestEventBusFullFlow:
         for et in expected:
             assert et in event_types, f"Missing event: {et}"
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_subscriber_receives_events(self):
         _register_agents()
         bus = EventBus(record_history=True)
@@ -237,6 +269,7 @@ class TestEventBusFullFlow:
 class TestTelemetryThroughAgent:
     """Verify telemetry records are created through InstrumentedEngine."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_telemetry_record_created(self):
         """Telemetry records are now produced by InstrumentedEngine,
         not by agents directly."""
@@ -262,6 +295,7 @@ class TestTelemetryThroughAgent:
 class TestToolExecutorIntegration:
     """Integration test for tool executor with real tools."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_calculator_and_think(self):
         _register_tools()
         from openjarvis.tools._stubs import ToolExecutor
@@ -306,6 +340,7 @@ class TestToolExecutorIntegration:
 class TestHeuristicRewardWithTelemetry:
     """HeuristicRewardFunction scores using TelemetryRecord data."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_reward_from_telemetry_record(self):
         from openjarvis.learning._stubs import RoutingContext
         from openjarvis.learning.routing.heuristic_reward import HeuristicRewardFunction
@@ -333,6 +368,7 @@ class TestHeuristicRewardWithTelemetry:
 class TestRouterPolicyRegistryDiscovery:
     """RouterPolicyRegistry discovers both heuristic and learned."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_both_policies_registered(self):
         from openjarvis.learning import ensure_registered
 
@@ -344,6 +380,7 @@ class TestRouterPolicyRegistryDiscovery:
 class TestTelemetryPipeline:
     """TelemetryStore → TelemetryAggregator pipeline."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_store_then_aggregate(self, tmp_path):
         import time
 
@@ -376,6 +413,7 @@ class TestTelemetryPipeline:
 class TestEventBusTelemetryAggregator:
     """EventBus → TelemetryStore → TelemetryAggregator end-to-end."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_event_driven_pipeline(self, tmp_path):
         from openjarvis.telemetry.aggregator import TelemetryAggregator
         from openjarvis.telemetry.store import TelemetryStore
@@ -404,6 +442,7 @@ class TestEventBusTelemetryAggregator:
 class TestAskFlowWithRouterPolicy:
     """Full ask flow with router policy (mocked)."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_mocked_ask_with_registry_router(self):
         from openjarvis.learning._stubs import RoutingContext
         from openjarvis.learning.routing.heuristic_policy import ensure_registered
@@ -425,6 +464,7 @@ class TestAskFlowWithRouterPolicy:
 class TestRewardTelemetryIntegration:
     """Reward function + telemetry integration."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_score_from_aggregated_stats(self, tmp_path):
         import time
 
@@ -466,6 +506,7 @@ class TestRewardTelemetryIntegration:
 class TestSDKImport:
     """Verify Jarvis class is importable from openjarvis."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_jarvis_imports(self):
         from openjarvis import Jarvis
 
@@ -473,25 +514,46 @@ class TestSDKImport:
 
 
 class TestSDKAskFlow:
-    """SDK ask flow with mocked engine end-to-end."""
+    """SDK ask flow with typed fake engine end-to-end."""
 
-    def test_sdk_ask_e2e(self):
-        from unittest.mock import patch
-
+    @pytest.mark.spec("REQ-engine.protocol.generate")
+    def test_sdk_ask_e2e(self, monkeypatch):
+        import openjarvis.sdk as sdk_mod
         from openjarvis.core.config import JarvisConfig
         from openjarvis.sdk import Jarvis
 
         engine = _make_engine("SDK response")
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=JarvisConfig(), model="test-model")
-            result = j.ask("Hello from integration test")
-            assert result == "SDK response"
-            j.close()
+        monkeypatch.setattr(sdk_mod, "get_engine", lambda *a, **kw: ("mock", engine))
+        j = Jarvis(config=JarvisConfig(), model="test-model")
+        result = j.ask("Hello from integration test")
+        assert result == "SDK response"
+        j.close()
+
+
+class _FakeMemoryBackend:
+    """Typed fake memory backend for SDK integration tests."""
+
+    def __init__(self) -> None:
+        self._store_count = 0
+
+    def store(self, content: str, metadata: Optional[dict] = None, **kwargs) -> str:
+        self._store_count += 1
+        return f"doc-{self._store_count}"
+
+    def retrieve(self, query: str, **kwargs):
+        from types import SimpleNamespace
+        return [
+            SimpleNamespace(
+                content="found content", score=0.9,
+                source="test.txt", metadata={},
+            ),
+        ]
 
 
 class TestSDKMemoryHandle:
     """SDK memory handle with SQLite backend."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_index_and_search(self, tmp_path):
         from openjarvis.core.config import JarvisConfig
         from openjarvis.sdk import MemoryHandle
@@ -499,15 +561,7 @@ class TestSDKMemoryHandle:
         cfg = JarvisConfig()
         handle = MemoryHandle(cfg)
 
-        mock_backend = MagicMock()
-        mock_backend.store.return_value = "doc-1"
-        mock_result = MagicMock()
-        mock_result.content = "found content"
-        mock_result.score = 0.9
-        mock_result.source = "test.txt"
-        mock_result.metadata = {}
-        mock_backend.retrieve.return_value = [mock_result]
-        handle._backend = mock_backend
+        handle._backend = _FakeMemoryBackend()
 
         # Create a test file with enough content to produce chunks
         test_file = tmp_path / "test.txt"
@@ -526,6 +580,7 @@ class TestSDKMemoryHandle:
 class TestBenchmarkRegistryDiscovery:
     """BenchmarkRegistry discovers latency + throughput."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_discovers_benchmarks(self):
         from openjarvis.bench import ensure_registered
         from openjarvis.core.registry import BenchmarkRegistry
@@ -538,6 +593,7 @@ class TestBenchmarkRegistryDiscovery:
 class TestBenchmarkSuiteRunAll:
     """BenchmarkSuite runs all and produces JSONL."""
 
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_suite_produces_jsonl(self):
         import json
 
@@ -560,11 +616,11 @@ class TestBenchmarkSuiteRunAll:
 
 
 class TestFullPipeline:
-    """Full pipeline: SDK → agent → engine → telemetry."""
+    """Full pipeline: SDK -> agent -> engine -> telemetry."""
 
-    def test_full_pipeline(self, tmp_path):
-        from unittest.mock import patch
-
+    @pytest.mark.spec("REQ-engine.protocol.generate")
+    def test_full_pipeline(self, monkeypatch, tmp_path):
+        import openjarvis.sdk as sdk_mod
         from openjarvis.agents._stubs import AgentResult
         from openjarvis.core.config import JarvisConfig
         from openjarvis.core.registry import AgentRegistry
@@ -590,8 +646,8 @@ class TestFullPipeline:
         cfg = JarvisConfig()
         cfg.telemetry.db_path = str(tmp_path / "telemetry.db")
 
-        with patch("openjarvis.sdk.get_engine", return_value=("mock", engine)):
-            j = Jarvis(config=cfg, model="test-model")
-            result = j.ask("Full pipeline test", agent="pipeline-test")
-            assert result == "Pipeline response"
-            j.close()
+        monkeypatch.setattr(sdk_mod, "get_engine", lambda *a, **kw: ("mock", engine))
+        j = Jarvis(config=cfg, model="test-model")
+        result = j.ask("Full pipeline test", agent="pipeline-test")
+        assert result == "Pipeline response"
+        j.close()

@@ -19,6 +19,7 @@ def engine() -> VLLMEngine:
 
 
 class TestOpenAICompatGenerate:
+    @pytest.mark.spec("REQ-engine.protocol.generate")
     def test_generate_returns_content(self, engine: VLLMEngine) -> None:
         with respx.mock:
             respx.post("http://testhost:8000/v1/chat/completions").mock(
@@ -46,6 +47,7 @@ class TestOpenAICompatGenerate:
         assert result["content"] == "4"
         assert result["usage"]["total_tokens"] == 9
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_empty_choices_returns_graceful_fallback(
         self, engine: VLLMEngine,
     ) -> None:
@@ -73,6 +75,7 @@ class TestOpenAICompatGenerate:
         assert result["content"] == ""
         assert result["finish_reason"] == "error"
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_generate_connection_error(self, engine: VLLMEngine) -> None:
         with respx.mock:
             respx.post("http://testhost:8000/v1/chat/completions").mock(
@@ -85,6 +88,7 @@ class TestOpenAICompatGenerate:
 
 
 class TestOpenAICompatListModels:
+    @pytest.mark.spec("REQ-engine.protocol.list-models")
     def test_list_models(self, engine: VLLMEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:8000/v1/models").mock(
@@ -97,6 +101,7 @@ class TestOpenAICompatListModels:
 
 
 class TestOpenAICompatHealth:
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_true(self, engine: VLLMEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:8000/v1/models").mock(
@@ -104,6 +109,7 @@ class TestOpenAICompatHealth:
             )
             assert engine.health() is True
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_false(self, engine: VLLMEngine) -> None:
         with respx.mock:
             respx.get("http://testhost:8000/v1/models").mock(
@@ -113,6 +119,7 @@ class TestOpenAICompatHealth:
 
 
 class TestOpenAICompatStream:
+    @pytest.mark.spec("REQ-engine.protocol.stream")
     @pytest.mark.asyncio
     async def test_stream_sse(self, engine: VLLMEngine) -> None:
         sse_lines = (

@@ -1,20 +1,25 @@
 """Tests for the daily_digest dataset."""
 
+import pytest
+
 from openjarvis.evals.datasets.daily_digest import DailyDigestDataset
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_dataset_loads():
     ds = DailyDigestDataset()
     ds.load(max_samples=5, seed=42)
     assert ds.size() == 5
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_dataset_full_size():
     ds = DailyDigestDataset()
     ds.load()
     assert ds.size() == 30
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_record_structure():
     ds = DailyDigestDataset()
     ds.load(max_samples=1, seed=42)
@@ -29,6 +34,7 @@ def test_record_structure():
     assert isinstance(record.metadata["priority_order"], list)
 
 
+@pytest.mark.spec("REQ-evals.datasets")
 def test_difficulty_tiers():
     ds = DailyDigestDataset()
     ds.load()

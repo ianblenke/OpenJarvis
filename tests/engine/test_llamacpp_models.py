@@ -55,6 +55,7 @@ def _openai_response(
 
 @pytest.mark.parametrize("model_id", COMPATIBLE_MODELS)
 class TestLlamaCppGenerate:
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_generate_basic(self, respx_mock, model_id: str) -> None:
         engine = _make_engine()
         respx_mock.post(f"{LLAMACPP_HOST}/v1/chat/completions").mock(
@@ -69,6 +70,7 @@ class TestLlamaCppGenerate:
         assert result["model"] == model_id
         assert result["usage"]["total_tokens"] == 15
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_generate_with_tools(self, respx_mock, model_id: str) -> None:
         engine = _make_engine()
         tool_calls = [
@@ -97,6 +99,7 @@ class TestLlamaCppGenerate:
         assert "tool_calls" in result
         assert result["tool_calls"][0]["name"] == "calculator"
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_generate_tool_fallback(self, respx_mock, model_id: str) -> None:
         """400 with tools in payload → retry without tools."""
         engine = _make_engine()
@@ -123,6 +126,7 @@ class TestLlamaCppGenerate:
         assert result["content"] == "Fallback"
         assert call_count == 2
 
+    @pytest.mark.spec("REQ-engine.protocol.stream")
     def test_generate_streaming(self, respx_mock, model_id: str) -> None:
         engine = _make_engine()
         sse = (
@@ -153,6 +157,7 @@ class TestLlamaCppGenerate:
 
 
 class TestLlamaCppModelDiscovery:
+    @pytest.mark.spec("REQ-engine.protocol.list-models")
     def test_list_models(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.get(f"{LLAMACPP_HOST}/v1/models").mock(
@@ -163,6 +168,7 @@ class TestLlamaCppModelDiscovery:
         )
         assert engine.list_models() == COMPATIBLE_MODELS
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_healthy(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.get(f"{LLAMACPP_HOST}/v1/models").mock(
@@ -170,6 +176,7 @@ class TestLlamaCppModelDiscovery:
         )
         assert engine.health() is True
 
+    @pytest.mark.spec("REQ-engine.protocol.health")
     def test_health_unhealthy(self, respx_mock) -> None:
         engine = _make_engine()
         respx_mock.get(f"{LLAMACPP_HOST}/v1/models").mock(
@@ -184,6 +191,7 @@ class TestLlamaCppModelDiscovery:
 
 
 class TestLlamaCppErrors:
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_connection_refused(self) -> None:
         engine = _make_engine()
         with respx.mock:
@@ -195,11 +203,13 @@ class TestLlamaCppErrors:
                     [Message(role=Role.USER, content="Hi")], model="qwen3:8b"
                 )
 
+    @pytest.mark.spec("REQ-engine.openai-compat")
     def test_default_host_is_8080(self) -> None:
         """LlamaCppEngine defaults to port 8080."""
         engine = LlamaCppEngine()
         assert engine._host == "http://localhost:8080"
 
+    @pytest.mark.spec("REQ-engine.registration")
     def test_engine_id(self) -> None:
         engine = LlamaCppEngine()
         assert engine.engine_id == "llamacpp"

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.tools.templates.loader import ToolTemplate, discover_templates
 
 
 class TestToolTemplate:
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_create_template(self):
         template = ToolTemplate({
             "name": "test_tool",
@@ -14,6 +17,7 @@ class TestToolTemplate:
         })
         assert template.spec.name == "test_tool"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_execute_upper_transform(self):
         template = ToolTemplate({
             "name": "upper",
@@ -24,6 +28,7 @@ class TestToolTemplate:
         assert result.success
         assert result.content == "HELLO"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_execute_lower_transform(self):
         template = ToolTemplate({
             "name": "lower",
@@ -34,6 +39,7 @@ class TestToolTemplate:
         assert result.success
         assert result.content == "hello"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_execute_reverse_transform(self):
         template = ToolTemplate({
             "name": "reverse",
@@ -44,6 +50,7 @@ class TestToolTemplate:
         assert result.success
         assert result.content == "olleh"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_execute_length_transform(self):
         template = ToolTemplate({
             "name": "length",
@@ -54,6 +61,7 @@ class TestToolTemplate:
         assert result.success
         assert result.content == "5"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_execute_json_pretty_transform(self):
         template = ToolTemplate({
             "name": "json",
@@ -64,6 +72,7 @@ class TestToolTemplate:
         assert result.success
         assert '"a": 1' in result.content
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_execute_json_pretty_invalid(self):
         template = ToolTemplate({
             "name": "json",
@@ -73,6 +82,7 @@ class TestToolTemplate:
         result = template.execute(input="not json")
         assert not result.success
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_execute_python_action(self):
         template = ToolTemplate({
             "name": "py",
@@ -83,6 +93,7 @@ class TestToolTemplate:
         assert result.success
         assert result.content == "5"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_execute_identity_transform(self):
         template = ToolTemplate({
             "name": "identity",
@@ -93,6 +104,7 @@ class TestToolTemplate:
         assert result.success
         assert result.content == "unchanged"
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_unknown_action_type(self):
         template = ToolTemplate({
             "name": "bad",
@@ -102,6 +114,7 @@ class TestToolTemplate:
         result = template.execute()
         assert not result.success
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_template_metadata(self):
         template = ToolTemplate({
             "name": "test",
@@ -112,6 +125,7 @@ class TestToolTemplate:
 
 
 class TestDiscoverTemplates:
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_discover_builtin(self):
         templates = discover_templates()
         # Should find at least some builtin templates
@@ -119,10 +133,12 @@ class TestDiscoverTemplates:
             names = {t.spec.name for t in templates}
             assert len(names) > 0
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_discover_nonexistent_dir(self, tmp_path):
         templates = discover_templates(tmp_path / "nonexistent")
         assert templates == []
 
+    @pytest.mark.spec("REQ-tools.base.protocol")
     def test_discover_custom_dir(self, tmp_path):
         # Create a custom template
         toml_content = """

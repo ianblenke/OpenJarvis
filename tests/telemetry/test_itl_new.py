@@ -8,16 +8,19 @@ from openjarvis.telemetry.itl import compute_itl_stats
 
 
 class TestComputeItlStats:
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_empty_timestamps(self):
         result = compute_itl_stats([])
         assert result["p50_ms"] == 0
         assert result["mean_ms"] == 0
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_single_timestamp(self):
         result = compute_itl_stats([100.0])
         assert result["p50_ms"] == 0
         assert result["max_ms"] == 0
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_two_timestamps(self):
         result = compute_itl_stats([0.0, 10.0])
         assert result["p50_ms"] == 10.0
@@ -25,6 +28,7 @@ class TestComputeItlStats:
         assert result["min_ms"] == 10.0
         assert result["max_ms"] == 10.0
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_uniform_spacing(self):
         # 11 timestamps 5ms apart → 10 ITLs all = 5.0
         timestamps = [i * 5.0 for i in range(11)]
@@ -37,6 +41,7 @@ class TestComputeItlStats:
         assert result["min_ms"] == pytest.approx(5.0)
         assert result["max_ms"] == pytest.approx(5.0)
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_varying_spacing(self):
         # [0, 1, 3, 6, 10] → ITLs = [1, 2, 3, 4]
         timestamps = [0.0, 1.0, 3.0, 6.0, 10.0]
@@ -47,6 +52,7 @@ class TestComputeItlStats:
         # Median of sorted [1,2,3,4] → 2.5
         assert result["p50_ms"] == pytest.approx(2.5)
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_percentile_ordering(self):
         timestamps = [float(i) for i in range(101)]
         result = compute_itl_stats(timestamps)
@@ -54,6 +60,7 @@ class TestComputeItlStats:
         assert result["p90_ms"] <= result["p95_ms"]
         assert result["p95_ms"] <= result["p99_ms"]
 
+    @pytest.mark.spec("REQ-telemetry.itl")
     def test_all_keys_present(self):
         result = compute_itl_stats([0.0, 5.0, 10.0])
         expected_keys = {

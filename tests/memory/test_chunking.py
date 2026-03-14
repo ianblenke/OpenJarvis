@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.tools.storage.chunking import ChunkConfig, chunk_text
 
 
+@pytest.mark.spec("REQ-storage.chunking")
 def test_empty_string_returns_empty():
     assert chunk_text("") == []
 
 
+@pytest.mark.spec("REQ-storage.chunking")
 def test_whitespace_only_returns_empty():
     assert chunk_text("   \n\n  ") == []
 
 
+@pytest.mark.spec("REQ-storage.chunking")
 def test_short_text_single_chunk():
     # Need >= 50 words (default min_chunk_size)
     words = [f"word{i}" for i in range(60)]
@@ -24,6 +29,7 @@ def test_short_text_single_chunk():
     assert "word0" in chunks[0].content
 
 
+@pytest.mark.spec("REQ-storage.chunking")
 def test_long_text_multiple_chunks():
     # Build text that exceeds 512 tokens
     words = [f"word{i}" for i in range(600)]
@@ -32,6 +38,7 @@ def test_long_text_multiple_chunks():
     assert len(chunks) >= 2
 
 
+@pytest.mark.spec("REQ-storage.chunking")
 def test_chunk_overlap():
     cfg = ChunkConfig(chunk_size=100, chunk_overlap=20, min_chunk_size=5)
     words = [f"w{i}" for i in range(250)]
@@ -47,6 +54,7 @@ def test_chunk_overlap():
     assert tail == head
 
 
+@pytest.mark.spec("REQ-storage.chunking")
 def test_paragraph_boundary_respected():
     cfg = ChunkConfig(chunk_size=20, chunk_overlap=0, min_chunk_size=3)
     para1 = " ".join(f"a{i}" for i in range(10))
@@ -57,6 +65,7 @@ def test_paragraph_boundary_respected():
     assert len(chunks) == 1
 
 
+@pytest.mark.spec("REQ-storage.chunking")
 def test_custom_config():
     cfg = ChunkConfig(chunk_size=50, chunk_overlap=10, min_chunk_size=5)
     words = [f"tok{i}" for i in range(200)]
@@ -66,6 +75,7 @@ def test_custom_config():
     assert len(chunks) >= 3
 
 
+@pytest.mark.spec("REQ-storage.chunking")
 def test_min_chunk_size_filters_tiny():
     cfg = ChunkConfig(chunk_size=100, chunk_overlap=0, min_chunk_size=50)
     # 30 words is below min_chunk_size=50
@@ -75,6 +85,7 @@ def test_min_chunk_size_filters_tiny():
     assert len(chunks) == 0
 
 
+@pytest.mark.spec("REQ-storage.chunking")
 def test_source_propagated():
     words = [f"word{i}" for i in range(60)]
     text = " ".join(words)
@@ -83,6 +94,7 @@ def test_source_propagated():
     assert chunks[0].source == "myfile.md"
 
 
+@pytest.mark.spec("REQ-storage.chunking")
 def test_chunk_index_sequential():
     cfg = ChunkConfig(chunk_size=50, chunk_overlap=0, min_chunk_size=5)
     words = [f"w{i}" for i in range(200)]

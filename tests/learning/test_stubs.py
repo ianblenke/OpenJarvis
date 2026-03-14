@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from openjarvis.learning._stubs import RoutingContext
 
 
 class TestRoutingContext:
+    @pytest.mark.spec("REQ-learning.registration")
     def test_defaults(self) -> None:
         ctx = RoutingContext()
         assert ctx.query == ""
@@ -16,6 +19,7 @@ class TestRoutingContext:
         assert ctx.urgency == 0.5
         assert ctx.metadata == {}
 
+    @pytest.mark.spec("REQ-learning.registration")
     def test_custom_values(self) -> None:
         ctx = RoutingContext(
             query="def foo():",

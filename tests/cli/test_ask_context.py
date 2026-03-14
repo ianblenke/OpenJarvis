@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import importlib
 
+import pytest
 from click.testing import CliRunner
 
 from openjarvis.cli import cli
 
 
+@pytest.mark.spec("REQ-cli.ask")
 def test_ask_no_context_flag():
     """The --no-context flag is accepted."""
     result = CliRunner().invoke(
@@ -18,6 +20,7 @@ def test_ask_no_context_flag():
     assert result.exit_code == 0
 
 
+@pytest.mark.spec("REQ-cli.ask")
 def test_ask_has_no_context_option():
     """ask --help lists the --no-context flag."""
     result = CliRunner().invoke(cli, ["ask", "--help"])
@@ -25,6 +28,7 @@ def test_ask_has_no_context_option():
     assert "--no-context" in result.output
 
 
+@pytest.mark.spec("REQ-cli.ask")
 def test_get_memory_backend_returns_none_when_empty(
     tmp_path, monkeypatch,
 ):
@@ -46,6 +50,7 @@ def test_get_memory_backend_returns_none_when_empty(
     assert result is None
 
 
+@pytest.mark.spec("REQ-cli.ask")
 def test_get_memory_backend_returns_backend_with_docs(
     tmp_path, monkeypatch,
 ):

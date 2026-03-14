@@ -66,6 +66,7 @@ class TestAgenticRunner:
         except RuntimeError:
             asyncio.set_event_loop(asyncio.new_event_loop())
 
+    @pytest.mark.spec("REQ-evals.runner.agentic")
     def test_basic_run(self):
         records = [
             MockRecord(record_id="r1", problem="What is 2+2?"),
@@ -82,6 +83,7 @@ class TestAgenticRunner:
         assert traces[1].query_id == "q0001"
         assert "Response to: What is 2+2?" in traces[0].response_text
 
+    @pytest.mark.spec("REQ-evals.runner.agentic")
     def test_max_queries(self):
         records = [MockRecord(record_id=f"r{i}", problem=f"Q{i}") for i in range(10)]
         dataset = MockDataset(records)
@@ -90,6 +92,7 @@ class TestAgenticRunner:
         traces = self._run_async(runner.run(max_queries=3))
         assert len(traces) == 3
 
+    @pytest.mark.spec("REQ-evals.runner.agentic")
     def test_agent_failure(self):
         records = [MockRecord(record_id="r1", problem="test")]
         dataset = MockDataset(records)
@@ -100,6 +103,7 @@ class TestAgenticRunner:
         assert not traces[0].completed
         assert "Agent error" in traces[0].response_text
 
+    @pytest.mark.spec("REQ-evals.runner.agentic")
     def test_synthetic_turn_created(self):
         records = [MockRecord(record_id="r1", problem="test")]
         dataset = MockDataset(records)
@@ -110,6 +114,7 @@ class TestAgenticRunner:
         assert traces[0].turns[0].input_tokens == 50
         assert traces[0].turns[0].output_tokens == 25
 
+    @pytest.mark.spec("REQ-evals.runner.agentic")
     def test_traces_property(self):
         records = [MockRecord(record_id="r1", problem="test")]
         dataset = MockDataset(records)
@@ -118,6 +123,7 @@ class TestAgenticRunner:
         self._run_async(runner.run())
         assert len(runner.traces) == 1
 
+    @pytest.mark.spec("REQ-evals.runner.agentic")
     def test_artifacts_saved(self, tmp_path):
         records = [MockRecord(record_id="r1", problem="test")]
         dataset = MockDataset(records)
@@ -133,6 +139,7 @@ class TestAgenticRunner:
         assert (subdirs[0] / "response.txt").exists()
         assert (subdirs[0] / "metadata.json").exists()
 
+    @pytest.mark.spec("REQ-evals.runner.agentic")
     def test_query_timeout_configured(self):
         """Verify timeout is stored and runner accepts the parameter."""
         records = [MockRecord(record_id="r1", problem="test")]
@@ -144,6 +151,7 @@ class TestAgenticRunner:
 
 
 class TestExtractPatch:
+    @pytest.mark.spec("REQ-evals.runner.agentic")
     def test_fenced_diff(self):
         text = (
             "Here's the fix:\n```diff\n"
@@ -154,6 +162,7 @@ class TestExtractPatch:
         assert patch is not None
         assert "--- a/foo.py" in patch
 
+    @pytest.mark.spec("REQ-evals.runner.agentic")
     def test_unfenced_diff(self):
         text = (
             "Some explanation\n"
@@ -165,6 +174,7 @@ class TestExtractPatch:
         assert patch is not None
         assert "diff --git" in patch
 
+    @pytest.mark.spec("REQ-evals.runner.agentic")
     def test_no_patch(self):
         text = "This is just a regular response with no code changes."
         patch = _extract_patch(text)

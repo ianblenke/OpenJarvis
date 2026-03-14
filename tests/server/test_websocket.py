@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock
+from typing import Any, Dict, List, Sequence
 
 import pytest
 
@@ -11,56 +11,66 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi import FastAPI  # noqa: E402
 from starlette.testclient import TestClient  # noqa: E402
 
+from openjarvis.core.types import Message  # noqa: E402
 from openjarvis.server.api_routes import include_all_routes  # noqa: E402
+from tests.fixtures.engines import FakeEngine  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
+class _StreamingEngine(FakeEngine):
+    """FakeEngine subclass that supports async streaming."""
+
+    def __init__(self, tokens: List[str] | None = None) -> None:
+        self._tokens = tokens or ["Hello", " ", "world"]
+        combined = "".join(self._tokens)
+        super().__init__(engine_id="mock", responses=[combined])
+
+    async def stream(self, messages, *, model="test-model", **kwargs):
+        for tok in self._tokens:
+            yield tok
+
+
+class _GenerateOnlyEngine:
+    """Typed fake engine with generate() only (no stream())."""
+
+    engine_id = "mock-nostream"
+
+    def __init__(self, content: str = "Hello world") -> None:
+        self._content = content
+
+    def generate(
+        self, messages: Sequence[Message], *, model: str, **kwargs: Any,
+    ) -> Dict[str, Any]:
+        return {
+            "content": self._content,
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
+            "model": "test-model",
+            "finish_reason": "stop",
+        }
+
+
+class _ErrorStreamingEngine:
+    """Typed fake engine whose stream() raises RuntimeError."""
+
+    engine_id = "mock-error"
+
+    async def stream(self, messages, *, model="test-model", **kwargs):
+        raise RuntimeError("Engine exploded")
+        yield  # pragma: no cover – needed for async gen syntax
+
+
 def _make_app(engine=None):
-    """Create a minimal FastAPI app with mock engine wired up."""
+    """Create a minimal FastAPI app with a typed fake engine wired up."""
     app = FastAPI()
     if engine is None:
-        engine = _make_streaming_engine()
+        engine = _StreamingEngine()
     app.state.engine = engine
     app.state.model = "test-model"
     include_all_routes(app)
     return app
-
-
-def _make_streaming_engine(tokens=None):
-    """Return a mock engine whose ``stream()`` yields tokens."""
-    if tokens is None:
-        tokens = ["Hello", " ", "world"]
-    engine = MagicMock()
-    engine.engine_id = "mock"
-
-    async def mock_stream(messages, *, model="test-model", **kwargs):
-        for tok in tokens:
-            yield tok
-
-    engine.stream = mock_stream
-    engine.generate.return_value = {
-        "content": "Hello world",
-        "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
-        "model": "test-model",
-        "finish_reason": "stop",
-    }
-    return engine
-
-
-def _make_generate_only_engine(content="Hello world"):
-    """Return a mock engine that only has ``generate()`` (no ``stream()``)."""
-    engine = MagicMock(spec=["generate", "engine_id"])
-    engine.engine_id = "mock-nostream"
-    engine.generate.return_value = {
-        "content": content,
-        "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
-        "model": "test-model",
-        "finish_reason": "stop",
-    }
-    return engine
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +81,7 @@ def _make_generate_only_engine(content="Hello world"):
 class TestWebSocketStreaming:
     """Tests for WS /v1/chat/stream endpoint."""
 
+    @pytest.mark.spec("REQ-server.websocket")
     def test_basic_streaming_exchange(self):
         """A valid message should produce chunk messages followed by a done."""
         app = _make_app()
@@ -94,6 +105,7 @@ class TestWebSocketStreaming:
             assert done is not None
             assert done["content"] == "Hello world"
 
+    @pytest.mark.spec("REQ-server.websocket")
     def test_missing_message_field(self):
         """Sending JSON without a 'message' field should return an error."""
         app = _make_app()
@@ -104,6 +116,7 @@ class TestWebSocketStreaming:
             assert data["type"] == "error"
             assert "Missing" in data["detail"]
 
+    @pytest.mark.spec("REQ-server.websocket")
     def test_invalid_json(self):
         """Sending non-JSON text should return an error."""
         app = _make_app()
@@ -114,6 +127,7 @@ class TestWebSocketStreaming:
             assert data["type"] == "error"
             assert "Invalid JSON" in data["detail"]
 
+    @pytest.mark.spec("REQ-server.websocket")
     def test_empty_message_field(self):
         """An empty string for 'message' should return an error."""
         app = _make_app()
@@ -124,9 +138,10 @@ class TestWebSocketStreaming:
             assert data["type"] == "error"
             assert "Missing" in data["detail"]
 
+    @pytest.mark.spec("REQ-server.websocket")
     def test_generate_fallback_when_no_stream(self):
         """When the engine has no stream(), generate() result is sent as one chunk."""
-        engine = _make_generate_only_engine("Fallback response")
+        engine = _GenerateOnlyEngine("Fallback response")
         app = _make_app(engine=engine)
         client = TestClient(app)
         with client.websocket_connect("/v1/chat/stream") as ws:
@@ -147,10 +162,10 @@ class TestWebSocketStreaming:
             assert done is not None
             assert done["content"] == "Fallback response"
 
+    @pytest.mark.spec("REQ-server.websocket")
     def test_custom_model_in_request(self):
         """The model field from the request should be forwarded to the engine."""
-        tokens = ["OK"]
-        engine = _make_streaming_engine(tokens=tokens)
+        engine = _StreamingEngine(tokens=["OK"])
         app = _make_app(engine=engine)
         client = TestClient(app)
         with client.websocket_connect("/v1/chat/stream") as ws:
@@ -164,16 +179,10 @@ class TestWebSocketStreaming:
             # async-generator call args, but the exchange completed without error
             assert data["content"] == "OK"
 
+    @pytest.mark.spec("REQ-server.websocket")
     def test_engine_error_returns_error_message(self):
         """If the engine raises, the endpoint should send an error frame."""
-        engine = MagicMock()
-
-        async def bad_stream(messages, *, model="test-model", **kwargs):
-            raise RuntimeError("Engine exploded")
-            # Make it look like an async generator to the endpoint
-            yield  # pragma: no cover – unreachable, but needed for async gen syntax
-
-        engine.stream = bad_stream
+        engine = _ErrorStreamingEngine()
         app = _make_app(engine=engine)
         client = TestClient(app)
         with client.websocket_connect("/v1/chat/stream") as ws:
@@ -182,6 +191,7 @@ class TestWebSocketStreaming:
             assert data["type"] == "error"
             assert "Engine exploded" in data["detail"]
 
+    @pytest.mark.spec("REQ-server.websocket")
     def test_multiple_messages_on_same_connection(self):
         """The WebSocket should support multiple request/response cycles."""
         app = _make_app()
@@ -196,6 +206,7 @@ class TestWebSocketStreaming:
                         assert data["content"] == "Hello world"
                         break
 
+    @pytest.mark.spec("REQ-server.websocket")
     def test_no_engine_configured(self):
         """If app.state has no engine, an error should be returned."""
         app = FastAPI()

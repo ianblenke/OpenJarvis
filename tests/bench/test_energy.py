@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from unittest.mock import MagicMock
 
 import pytest
 
 from openjarvis.bench.energy import EnergyBenchmark
 from openjarvis.core.registry import BenchmarkRegistry
 from openjarvis.telemetry.energy_monitor import EnergySample
+from tests.fixtures.engines import FakeEngine
 
 
 @pytest.fixture(autouse=True)
@@ -21,17 +21,56 @@ def _register_energy():
 
 
 def _make_engine(completion_tokens=10):
-    engine = MagicMock()
-    engine.engine_id = "mock"
-    engine.generate.return_value = {
-        "content": "Hello world",
-        "usage": {
+    return FakeEngine(
+        engine_id="mock",
+        responses=["Hello world"],
+        # FakeEngine computes usage from content length; override via wrapper
+    )
+
+
+class _FixedUsageEngine:
+    """Thin wrapper around FakeEngine that returns fixed usage tokens."""
+
+    def __init__(self, completion_tokens: int = 10) -> None:
+        self._inner = FakeEngine(engine_id="mock", responses=["Hello world"])
+        self.engine_id = self._inner.engine_id
+        self._completion_tokens = completion_tokens
+        self._call_count = 0
+        self._side_effect = None
+
+    def generate(self, messages, *, model, **kwargs):
+        self._call_count += 1
+        if self._side_effect is not None:
+            raise self._side_effect
+        result = self._inner.generate(messages, model=model, **kwargs)
+        result["usage"] = {
             "prompt_tokens": 5,
-            "completion_tokens": completion_tokens,
-            "total_tokens": 5 + completion_tokens,
-        },
-    }
-    return engine
+            "completion_tokens": self._completion_tokens,
+            "total_tokens": 5 + self._completion_tokens,
+        }
+        return result
+
+    @property
+    def call_count(self):
+        return self._call_count
+
+
+class _FakeEnergyMonitor:
+    """Typed fake energy monitor implementing the sample() context manager."""
+
+    def __init__(self, energy_joules: float = 5.0, power_watts: float = 100.0):
+        self._energy_joules = energy_joules
+        self._power_watts = power_watts
+
+    def energy_method(self):
+        return "polling"
+
+    @contextmanager
+    def sample(self):
+        yield EnergySample(
+            energy_joules=self._energy_joules,
+            mean_power_watts=self._power_watts,
+        )
 
 
 class TestEnergyBenchmark:
@@ -46,7 +85,7 @@ class TestEnergyBenchmark:
 
     def test_run_without_energy_monitor(self):
         """Running without an energy monitor should still return metrics."""
-        engine = _make_engine()
+        engine = _FixedUsageEngine()
         b = EnergyBenchmark()
         result = b.run(engine, "test-model", num_samples=3, warmup_samples=0)
 
@@ -60,21 +99,10 @@ class TestEnergyBenchmark:
         assert result.metrics["total_energy_joules"] == 0.0
         assert result.energy_method == ""
 
-    def test_run_with_mock_energy_monitor(self):
-        """Running with a mock energy monitor should populate energy fields."""
-        engine = _make_engine(completion_tokens=10)
-
-        # Create a mock energy monitor with a sample() context manager
-        monitor = MagicMock()
-        monitor.energy_method.return_value = "polling"
-
-        sample = EnergySample(energy_joules=5.0, mean_power_watts=100.0)
-
-        @contextmanager
-        def mock_sample():
-            yield sample
-
-        monitor.sample = mock_sample
+    def test_run_with_fake_energy_monitor(self):
+        """Running with a fake energy monitor should populate energy fields."""
+        engine = _FixedUsageEngine(completion_tokens=10)
+        monitor = _FakeEnergyMonitor(energy_joules=5.0, power_watts=100.0)
 
         b = EnergyBenchmark()
         result = b.run(
@@ -89,7 +117,7 @@ class TestEnergyBenchmark:
 
     def test_warmup_samples_excluded(self):
         """Warmup samples should not be included in measurement metrics."""
-        engine = _make_engine()
+        engine = _FixedUsageEngine()
         b = EnergyBenchmark()
 
         result = b.run(engine, "test-model", num_samples=3, warmup_samples=2)
@@ -97,12 +125,12 @@ class TestEnergyBenchmark:
         assert result.warmup_samples == 2
         assert result.samples == 3
         # warmup (2) + measurement (3) = 5 total calls
-        assert engine.generate.call_count == 5
+        assert engine.call_count == 5
 
     def test_run_with_errors(self):
         """All errors should result in zero metrics."""
-        engine = _make_engine()
-        engine.generate.side_effect = RuntimeError("fail")
+        engine = _FixedUsageEngine()
+        engine._side_effect = RuntimeError("fail")
         b = EnergyBenchmark()
         result = b.run(engine, "test-model", num_samples=3, warmup_samples=0)
 

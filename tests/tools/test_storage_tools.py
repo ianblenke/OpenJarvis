@@ -61,38 +61,45 @@ def backend():
 
 
 class TestMemoryStoreTool:
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_spec(self):
         tool = MemoryStoreTool()
         assert tool.spec.name == "memory_store"
         assert tool.spec.category == "storage"
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_store_success(self, backend):
         tool = MemoryStoreTool(backend)
         result = tool.execute(content="Hello world", source="test")
         assert result.success is True
         assert "doc-1" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_store_no_backend(self):
         tool = MemoryStoreTool()
         result = tool.execute(content="Hello")
         assert result.success is False
         assert "No memory backend" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_store_no_content(self, backend):
         tool = MemoryStoreTool(backend)
         result = tool.execute()
         assert result.success is False
         assert "No content" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_tool_id(self):
         assert MemoryStoreTool.tool_id == "memory_store"
 
 
 class TestMemoryRetrieveTool:
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_spec(self):
         tool = MemoryRetrieveTool()
         assert tool.spec.name == "memory_retrieve"
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_retrieve_success(self, backend):
         backend.store("Python is great", source="test")
         tool = MemoryRetrieveTool(backend)
@@ -101,23 +108,27 @@ class TestMemoryRetrieveTool:
         assert "Python is great" in result.content
         assert "0.90" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_retrieve_no_results(self, backend):
         tool = MemoryRetrieveTool(backend)
         result = tool.execute(query="nonexistent")
         assert result.success is True
         assert "No results" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_retrieve_no_backend(self):
         tool = MemoryRetrieveTool()
         result = tool.execute(query="test")
         assert result.success is False
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_retrieve_no_query(self, backend):
         tool = MemoryRetrieveTool(backend)
         result = tool.execute()
         assert result.success is False
         assert "No query" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_retrieve_top_k(self, backend):
         for i in range(10):
             backend.store(f"document {i} about testing", source="test")
@@ -129,10 +140,12 @@ class TestMemoryRetrieveTool:
 
 
 class TestMemorySearchTool:
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_spec(self):
         tool = MemorySearchTool()
         assert tool.spec.name == "memory_search"
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_search_success(self, backend):
         backend.store("Machine learning basics", source="ml.txt")
         tool = MemorySearchTool(backend)
@@ -141,12 +154,14 @@ class TestMemorySearchTool:
         assert "Machine learning basics" in result.content
         assert "ml.txt" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_search_no_results(self, backend):
         tool = MemorySearchTool(backend)
         result = tool.execute(query="xyz")
         assert result.success is True
         assert "No results" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_search_numbered_output(self, backend):
         backend.store("First doc about AI", source="a.txt")
         backend.store("Second doc about AI", source="b.txt")
@@ -158,27 +173,32 @@ class TestMemorySearchTool:
 
 
 class TestMemoryIndexTool:
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_spec(self):
         tool = MemoryIndexTool()
         assert tool.spec.name == "memory_index"
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_index_no_backend(self):
         tool = MemoryIndexTool()
         result = tool.execute(path="/tmp/test")
         assert result.success is False
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_index_no_path(self, backend):
         tool = MemoryIndexTool(backend)
         result = tool.execute()
         assert result.success is False
         assert "No path" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_index_nonexistent_path(self, backend):
         tool = MemoryIndexTool(backend)
         result = tool.execute(path="/nonexistent/path/to/nothing")
         assert result.success is False
         assert "does not exist" in result.content
 
+    @pytest.mark.spec("REQ-tools.retrieval")
     def test_index_file(self, backend):
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".txt", delete=False,
@@ -196,6 +216,7 @@ class TestMemoryIndexTool:
 
 
 class TestStorageToolsRegistration:
+    @pytest.mark.spec("REQ-tools.base.registration")
     def test_storage_tools_importable(self):
         """All storage tools are importable and instantiable."""
         from openjarvis.tools.storage_tools import (
@@ -211,6 +232,7 @@ class TestStorageToolsRegistration:
         assert MemorySearchTool().spec.name == "memory_search"
         assert MemoryIndexTool().spec.name == "memory_index"
 
+    @pytest.mark.spec("REQ-tools.base.registration")
     def test_auto_discover_finds_storage_tools(self):
         """MCPServer auto-discovery finds storage tools."""
         server = MCPServer()

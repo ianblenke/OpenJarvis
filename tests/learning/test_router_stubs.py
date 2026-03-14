@@ -24,10 +24,12 @@ class _DummyAnalyzer(QueryAnalyzer):
 
 
 class TestRouterPolicy:
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_abc_cannot_instantiate(self) -> None:
         with pytest.raises(TypeError):
             RouterPolicy()  # type: ignore[abstract]
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_concrete_implementation(self) -> None:
         router = _DummyRouter()
         ctx = RoutingContext(query="hello")
@@ -35,10 +37,12 @@ class TestRouterPolicy:
 
 
 class TestQueryAnalyzer:
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_abc_cannot_instantiate(self) -> None:
         with pytest.raises(TypeError):
             QueryAnalyzer()  # type: ignore[abstract]
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_concrete_implementation(self) -> None:
         analyzer = _DummyAnalyzer()
         ctx = analyzer.analyze("hello world")
@@ -47,6 +51,7 @@ class TestQueryAnalyzer:
 
 
 class TestDefaultQueryAnalyzer:
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_analyze_basic(self) -> None:
         analyzer = DefaultQueryAnalyzer()
         ctx = analyzer.analyze("Hello world")
@@ -55,16 +60,19 @@ class TestDefaultQueryAnalyzer:
         assert ctx.has_code is False
         assert ctx.has_math is False
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_analyze_code_query(self) -> None:
         analyzer = DefaultQueryAnalyzer()
         ctx = analyzer.analyze("def hello(): pass")
         assert ctx.has_code is True
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_analyze_math_query(self) -> None:
         analyzer = DefaultQueryAnalyzer()
         ctx = analyzer.analyze("solve the integral of x^2")
         assert ctx.has_math is True
 
+    @pytest.mark.spec("REQ-learning.router-policy")
     def test_analyze_with_urgency(self) -> None:
         analyzer = DefaultQueryAnalyzer()
         ctx = analyzer.analyze("quick question", urgency=0.9)

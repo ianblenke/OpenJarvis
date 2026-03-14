@@ -12,6 +12,7 @@ from openjarvis.learning.training.lora import HAS_TORCH, LoRATrainer, LoRATraini
 
 
 class TestLoRATrainingConfig:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_default_config(self) -> None:
         """Verify default values of LoRATrainingConfig."""
         cfg = LoRATrainingConfig()
@@ -41,6 +42,7 @@ class TestLoRATrainingConfig:
         # Memory
         assert cfg.gradient_checkpointing is True
 
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_custom_config(self) -> None:
         """Verify custom values are stored correctly."""
         cfg = LoRATrainingConfig(
@@ -77,11 +79,13 @@ class TestLoRATrainingConfig:
         assert cfg.save_every_n_epochs == 2
         assert cfg.gradient_checkpointing is False
 
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_config_validates_lora_rank(self) -> None:
         """lora_rank=0 raises ValueError."""
         with pytest.raises(ValueError, match="lora_rank"):
             LoRATrainingConfig(lora_rank=0)
 
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_config_validates_num_epochs(self) -> None:
         """num_epochs=0 raises ValueError."""
         with pytest.raises(ValueError, match="num_epochs"):
@@ -94,6 +98,7 @@ class TestLoRATrainingConfig:
 
 
 class TestLoRATrainerNoTorch:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_init_without_torch_raises(self) -> None:
         """If HAS_TORCH is False, constructing LoRATrainer raises ImportError."""
         if HAS_TORCH:
@@ -106,6 +111,7 @@ class TestLoRATrainerNoTorch:
 
 @pytest.mark.skipif(not HAS_TORCH, reason="torch not installed")
 class TestLoRATrainerWithTorch:
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_prepare_dataset_from_pairs(self) -> None:
         """prepare_dataset converts SFT pairs to tokenized examples."""
         cfg = LoRATrainingConfig()
@@ -136,6 +142,7 @@ class TestLoRATrainerWithTorch:
             assert "attention_mask" in item
             assert "text" in item
 
+    @pytest.mark.spec("REQ-learning.sft-trainer")
     def test_train_empty_pairs_returns_skipped(self) -> None:
         """train() with empty pairs returns skipped status."""
         cfg = LoRATrainingConfig()
