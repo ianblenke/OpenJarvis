@@ -191,7 +191,7 @@ export function InputArea() {
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         accumulatedContent =
-          accumulatedContent || 'Error: Failed to get response.';
+          accumulatedContent || `Error: ${err.message || err}`;
       }
     } finally {
       if (!accumulatedContent) {

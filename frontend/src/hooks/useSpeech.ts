@@ -37,7 +37,7 @@ export function useSpeech() {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      recorder.start();
+      recorder.start(250); // Collect chunks every 250ms for WebKitGTK compat
       mediaRecorderRef.current = recorder;
       setState('recording');
     } catch (err) {
@@ -61,11 +61,24 @@ export function useSpeech() {
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
 
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        const mimeType = recorder.mimeType || 'audio/webm';
+        const blob = new Blob(chunksRef.current, { type: mimeType });
         chunksRef.current = [];
 
+        // Derive file extension from MIME type for server-side format detection
+        const extMap: Record<string, string> = {
+          'audio/webm': 'webm',
+          'audio/ogg': 'ogg',
+          'audio/wav': 'wav',
+          'audio/mp4': 'm4a',
+          'audio/mpeg': 'mp3',
+        };
+        const baseType = mimeType.split(';')[0];
+        const ext = extMap[baseType] || 'ogg';
+        const filename = `recording.${ext}`;
+
         try {
-          const result = await transcribeAudio(blob);
+          const result = await transcribeAudio(blob, filename);
           setState('idle');
           resolve(result.text);
         } catch (err) {

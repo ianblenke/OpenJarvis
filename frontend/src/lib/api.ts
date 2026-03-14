@@ -15,7 +15,7 @@ declare global {
 
 export const isTauri = () => typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
 
-const DESKTOP_API = 'http://127.0.0.1:8000';
+const DESKTOP_API = 'http://127.0.0.1:8222';
 
 const getBase = () => {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
@@ -151,25 +151,28 @@ export interface SpeechHealth {
 }
 
 export async function transcribeAudio(audioBlob: Blob, filename = 'recording.webm'): Promise<TranscriptionResult> {
-  if (isTauri()) {
-    try {
-      const buffer = await audioBlob.arrayBuffer();
-      return await tauriInvoke<TranscriptionResult>('transcribe_audio', {
-        audioData: Array.from(new Uint8Array(buffer)),
-        filename,
-      });
-    } catch {
-      // Fall through to fetch
-    }
+  console.log('[speech] transcribeAudio called, blob size:', audioBlob.size, 'type:', audioBlob.type);
+  if (audioBlob.size === 0) {
+    throw new Error('No audio data recorded');
   }
+
+  // Use fetch directly (more reliable than Tauri invoke for large binary data)
   const formData = new FormData();
   formData.append('file', audioBlob, filename);
-  const res = await fetch(`${getBase()}/v1/speech/transcribe`, {
+  const base = getBase();
+  console.log('[speech] POST to', `${base}/v1/speech/transcribe`);
+  const res = await fetch(`${base}/v1/speech/transcribe`, {
     method: 'POST',
     body: formData,
   });
-  if (!res.ok) throw new Error(`Transcription failed: ${res.status}`);
-  return res.json();
+  if (!res.ok) {
+    const body = await res.text();
+    console.error('[speech] Transcription failed:', res.status, body);
+    throw new Error(`Transcription failed: ${res.status} ${body}`);
+  }
+  const result = await res.json();
+  console.log('[speech] Transcription result:', result);
+  return result;
 }
 
 export async function fetchSpeechHealth(): Promise<SpeechHealth> {

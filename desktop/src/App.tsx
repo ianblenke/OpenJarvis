@@ -27,7 +27,7 @@ const TABS: Tab[] = [
   { id: 'settings', label: 'Settings' },
 ];
 
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://localhost:8222';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<TabId>('savings');

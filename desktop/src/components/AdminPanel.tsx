@@ -273,7 +273,7 @@ export function AdminPanel({ apiUrl }: { apiUrl: string }) {
     setCommandOutput(null);
     try {
       const output = await invoke<string>('run_jarvis_command', {
-        args: ['serve', '--port', '8000'],
+        args: ['serve', '--port', '8222'],
       });
       setCommandOutput(output);
       // Wait a moment then refresh health

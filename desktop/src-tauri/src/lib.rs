@@ -266,9 +266,13 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     let uv_bin = resolve_bin("uv");
     let project_root = find_project_root();
     let mut cmd = tokio::process::Command::new(&uv_bin);
-    cmd.args(["run", "jarvis", "serve", "--port", &JARVIS_PORT.to_string(), "--agent", "simple"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+    cmd.args(["run", "jarvis", "serve", "--port", &JARVIS_PORT.to_string(), "--agent", "simple"]);
+    // Redirect server output to a log file for debugging
+    let log_file = std::fs::File::create("/tmp/jarvis-server.log")
+        .unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap());
+    let log_err = log_file.try_clone().unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap());
+    cmd.stdout(std::process::Stdio::from(log_file))
+        .stderr(std::process::Stdio::from(log_err));
     if let Some(ref root) = project_root {
         cmd.current_dir(root);
     }
@@ -612,6 +616,22 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Auto-grant microphone permission on Linux (WebKitGTK)
+            #[cfg(target_os = "linux")]
+            {
+                use webkit2gtk::WebViewExt;
+                use webkit2gtk::PermissionRequestExt;
+                if let Some(window) = app.get_webview_window("main") {
+                    window.with_webview(|wv| {
+                        let webview = wv.inner();
+                        webview.connect_permission_request(|_wv, req: &webkit2gtk::PermissionRequest| {
+                            req.allow();
+                            true
+                        });
+                    }).ok();
+                }
+            }
 
             // Auto-start backend services on launch
             tauri::async_runtime::spawn(boot_backend(boot_backend_ref, boot_status_ref));

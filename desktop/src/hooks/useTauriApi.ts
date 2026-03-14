@@ -27,7 +27,7 @@ async function browserFallback<T>(
   command: string,
   args: Record<string, unknown>,
 ): Promise<T> {
-  const apiUrl = (args.apiUrl as string) || 'http://localhost:8000';
+  const apiUrl = (args.apiUrl as string) || 'http://localhost:8222';
   const urlMap: Record<string, string> = {
     check_health: '/health',
     fetch_energy: '/v1/telemetry/energy',

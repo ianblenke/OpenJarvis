@@ -41,8 +41,9 @@ export default function App() {
     else if (settings.theme === 'light') root.classList.add('light');
   }, [settings.theme]);
 
-  // Fetch models on mount
+  // Fetch models once setup is done (server is ready)
   useEffect(() => {
+    if (!setupDone) return;
     fetchModels()
       .then((m) => {
         setModels(m);
@@ -50,12 +51,13 @@ export default function App() {
       })
       .catch(() => setModels([]))
       .finally(() => setModelsLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch server info
+  // Fetch server info once setup is done
   useEffect(() => {
+    if (!setupDone) return;
     fetchServerInfo().then(setServerInfo).catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll savings and optionally share to Supabase
   useEffect(() => {

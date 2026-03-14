@@ -12,7 +12,7 @@ interface Settings {
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  apiUrl: 'http://localhost:8000',
+  apiUrl: 'http://localhost:8222',
   refreshInterval: 5,
   theme: 'dark',
 };
@@ -146,7 +146,7 @@ export function SettingsPanel({ onSettingsChange }: SettingsPanelProps) {
           onChange={(e) =>
             setSettings((s) => ({ ...s, apiUrl: e.target.value }))
           }
-          placeholder="http://localhost:8000"
+          placeholder="http://localhost:8222"
         />
       </div>
 
