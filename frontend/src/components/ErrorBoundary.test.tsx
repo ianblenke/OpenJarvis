@@ -64,7 +64,7 @@ describe('ErrorBoundary', () => {
   });
 
   it('shows fallback message when error has no message', () => {
-    function ThrowEmpty() {
+    function ThrowEmpty(): React.ReactNode {
       throw new Error();
     }
 

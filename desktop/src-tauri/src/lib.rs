@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 
 const OLLAMA_PORT: u16 = 11434;
 const JARVIS_PORT: u16 = 8222;
-const DEFAULT_MODEL: &str = "qwen3:0.6b";
+const DEFAULT_MODEL: &str = "qwen3.5:0.8b";
 
 /// Resolve full path to a binary by checking common locations.
 /// macOS .app bundles don't inherit the shell PATH, so we probe manually.
